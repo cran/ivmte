@@ -1,7 +1,7 @@
 Package: ivmte
 Title: Instrumental Variables: Extrapolation by Marginal Treatment
         Effects
-Version: 1.0.0
+Version: 1.0.1
 Authors@R: c(person("Alexander",
 		    "Torgovitsky",
 		    email = "atorgovitsky@gmail.com",
@@ -42,8 +42,8 @@ Encoding: UTF-8
 LazyData: true
 RoxygenNote: 6.1.1
 NeedsCompilation: no
-Packaged: 2019-02-03 22:23:27 UTC; joshua
+Packaged: 2019-05-15 22:38:27 UTC; joshua
 Author: Alexander Torgovitsky [aut],
   Joshua Shea [aut, cre]
 Repository: CRAN
-Date/Publication: 2019-02-08 12:33:27 UTC
+Date/Publication: 2019-05-16 11:10:11 UTC

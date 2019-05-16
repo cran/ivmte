@@ -12,26 +12,27 @@ removeSplines(formula)
 \value{
 a list containing two objects. One object is \code{formula}
     but with the spline components removed. The second object is a
-    list. The name of each element is the \code{uSplines()}
-    command, and the elements are a vector of the names of
-    covariates that were interacted with the \code{uSplines()} command.
+    list. The name of each element is the
+    \code{uSpline()}/\code{uSplines()} command, and the elements
+    are a vector of the names of covariates that were interacted
+    with the \code{uSpline()}/\code{uSplines()} command.
 }
 \description{
-This function separates out the function call \code{uSplines()}
-potentially embedded in the MTR formulas from the rest of the
-formula. The terms involving splines are treated separately from
-the terms that do not involve splines when creating the gamma
-moments.
+This function separates out the function calls \code{uSpline()} and
+\code{uSplines()} potentially embedded in the MTR formulas from the
+rest of the formula. The terms involving splines are treated
+separately from the terms that do not involve splines when creating
+the gamma moments.
 }
 \examples{
 ## Declare and MTR with a sline component.
-m0 = ~ x1 + x1 : uSplines(degree = 2,
+m0 = ~ x1 + x1 : uSpline(degree = 2,
                           knots = c(0.2, 0.4)) +
-            x2 : uSplines(degree = 2,
+            x2 : uSpline(degree = 2,
                           knots = c(0.2, 0.4)) +
-            x1 : x2 : uSplines(degree = 2,
+            x1 : x2 : uSpline(degree = 2,
                                knots = c(0.2, 0.4)) +
-            uSplines(degree = 3,
+            uSpline(degree = 3,
                      knots = c(0.2, 0.4),
                      intercept = FALSE)
 

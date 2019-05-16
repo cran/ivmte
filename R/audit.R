@@ -99,6 +99,10 @@
 #'     statistical noise.
 #' @param lpsolver name of the linear programming package in R used to
 #'     obtain the bounds on the treatment effect.
+#' @param noisy boolean, set to TRUE by default. If TRUE, then output
+#'     throughout the audit procedure is printed.
+#' @param seed integer, the seed that determines the random grid in
+#'     the audit procedure.
 #' @return a list. Included in the list is the minimum violation of
 #'     observational equivalence of the set of IV-like estimands, as
 #'     well as the list of matrices and vectors associated with
@@ -126,7 +130,7 @@
 #'                  data = dtm,
 #'                  uname = u,
 #'                  as.function = FALSE)
-#' 
+#'
 #' polynomials1 <- polyparse(formula = formula0,
 #'                  data = dtm,
 #'                  uname = u,
@@ -193,23 +197,26 @@
 #'
 #' @export
 audit <- function(data, uname, m0, m1, splinesobj,
-                      vars_mtr, terms_mtr0, terms_mtr1,
-                      grid.nu = 20, grid.nx = 50,
-                      audit.nx = 5, audit.nu = 3, audit.max = 5,
-                      audit.tol = 1e-08,
-                      m1.ub, m0.ub, m1.lb, m0.lb,
-                      m1.ub.default = FALSE,
-                      m0.ub.default = FALSE,
-                      m1.lb.default = FALSE,
-                      m0.lb.default = FALSE,
-                      mte.ub, mte.lb,
-                      m0.dec = FALSE, m0.inc = FALSE,
-                      m1.dec = FALSE, m1.inc = FALSE,
-                      mte.dec = FALSE, mte.inc = FALSE,
-                      sset, gstar0, gstar1, obseq.tol = 0.05, lpsolver) {
-    
+                  vars_mtr, terms_mtr0, terms_mtr1,
+                  grid.nu = 20, grid.nx = 20,
+                  audit.nx = 20, audit.nu = 20, audit.max = 10,
+                  audit.tol = 1e-08,
+                  m1.ub, m0.ub, m1.lb, m0.lb,
+                  m1.ub.default = FALSE,
+                  m0.ub.default = FALSE,
+                  m1.lb.default = FALSE,
+                  m0.lb.default = FALSE,
+                  mte.ub, mte.lb,
+                  m0.dec = FALSE, m0.inc = FALSE,
+                  m1.dec = FALSE, m1.inc = FALSE,
+                  mte.dec = FALSE, mte.inc = FALSE,
+                  sset, gstar0, gstar1, obseq.tol = 0.05, lpsolver,
+                  noisy = TRUE, seed = 12345) {
+
+    set.seed(seed)
     call  <- match.call()
 
+    lpsolver <- tolower(lpsolver)
     splines <- list(splinesobj[[1]]$splineslist,
                     splinesobj[[2]]$splineslist)
 
@@ -310,15 +317,15 @@ audit <- function(data, uname, m0, m1, splinesobj,
     audit_count <- 1
 
     while (audit_count <= audit.max) {
-        if (obseq.tol > 0 ) {
-            cat("Audit count:", audit_count, "\n")
-            if (!noX) {
-                if (length(grid_resid) == 0) {
+        if (noisy) {
+            cat("    Audit count:", audit_count, "\n")
+        }
+        if (!noX) {
+            if (length(grid_resid) == 0) {
+                if (noisy) {
                     message("Full support of covariates now included as grid.")
                 }
             }
-        } else {
-            message("\nSkipping audit procedure: obseq.tol set to 0. \n")
         }
 
         ## Generate all monotonicity and boundedness matrices for initial grid
@@ -347,9 +354,14 @@ audit <- function(data, uname, m0, m1, splinesobj,
 
         minobseq  <- obsEqMin(sset, lpobj, lpsolver)
 
+        ## Try to diagnose cases where the solution is
+        ## infeasible. Here, the problem is solved without any shape
+        ## restrictions. We then check if any of the lower and upper
+        ## bounds are violated, which is a likely cause for infeasible
+        ## solutions.
         if (!is.numeric(minobseq$obj) || is.na(minobseq$obj) ||
-            (lpsolver == "lpSolve" && minobseq$status == 0) |
-            (lpsolver == "lpSolveAPI" && minobseq$status == 0)) {
+            (lpsolver == "lpsolve" && minobseq$status == 0) |
+            (lpsolver == "lpsolveapi" && minobseq$status == 0)) {
 
             lpobjAlt <- lpSetup(sset, mbobj$mbA, mbobj$mbs,
                                     mbobj$mbrhs, lpsolver,
@@ -366,8 +378,15 @@ audit <- function(data, uname, m0, m1, splinesobj,
             mbrhs[negatepos] <- -mbrhs[negatepos]
 
             violatevec <- mapply(">", (mbA %*% solVec), mbrhs)
-            violatepos <- which(violatevec == TRUE)
-
+            ## Deal with special cases where constraints may be
+            ## binding, and machine precision fails to recognize this
+            ## and treats it as a violation
+            if (sum(violatevec) > 0) {
+                equality <- mapply(all.equal, (mbA %*% solVec)[violatevec],
+                                   mbrhs[violatevec])
+                violatevec[equality == TRUE] <- FALSE
+            }
+            violatepos <- which(violatevec == TRUE)            
             violateType <- sapply(violatepos, function(x) {
                 if (x %in% mbobj$lb0seq) {
                     if (m0.lb.default == TRUE) {
@@ -429,41 +448,36 @@ audit <- function(data, uname, m0, m1, splinesobj,
                       paste(unique(violateType), collapse = ", "), ".\n")))
         }
 
-        if (obseq.tol > 0) {
-            message(paste("Minimum observational equivalence deviation:",
-                          round(minobseq$obj, 6), "\n"))
+
+        if (noisy) {
+            message(paste("    Minimum criterion:", fmtResult(minobseq$obj)))
         }
 
         ## Obtain bounds
-        message("Obtaining bounds...\n")
+        if (noisy) {
+            message("    Obtaining bounds...")
+        }
+
         lpresult  <- bound(g0 = gstar0,
                            g1 = gstar1,
                            sset = sset,
                            lpobj = lpobj,
                            obseq.factor = minobseq$obj * (1 + obseq.tol),
                            lpsolver = lpsolver)
-        
+
         solVecMin <- c(lpresult$ming0, lpresult$ming1)
         solVecMax <- c(lpresult$maxg0, lpresult$maxg1)
 
         optstatus <- min(c(lpresult$minstatus,
                            lpresult$maxstatus))
 
-        if (obseq.tol == 0) {
-            if (optstatus == 0) {
-                message(gsub("\\s+", " ",
-                             "Unable to obtain bounds. Try setting obseq.tol
-                             to be greater than 0 to allow for model
-                             misspecification, or expanding the grid
-                             size for imposing the shape restrictions
-                             (grid.nx, grid.nu). \n"))
-            }
-            warning(gsub("\\s+", " ",
-                         "Setting obseq.tol to 0 allows assumes that any
-                         violation of observational equivalence is due to
-                         statistical noise, and that the model is
-                         correctly specified. The audit procedure is skipped."))
-            break
+        if (obseq.tol == 0 & optstatus == 0) {
+            stop(gsub("\\s+", " ",
+                         "Unable to obtain bounds. Try setting obseq.tol
+                          to be greater than 0 to allow for model
+                          misspecification, or expanding the grid
+                          size for imposing the shape restrictions
+                          (grid.nx, grid.nu). \n"))
         }
 
         ## Generate a new grid for the audit
@@ -490,7 +504,6 @@ audit <- function(data, uname, m0, m1, splinesobj,
                                         prob = replicate(nrow(resid_support),
                                         (1 / nrow(resid_support))))
             }
-
             if (length(a_grid_index) == 0) {
                 a_grid_index <- grid_index
             }
@@ -505,16 +518,19 @@ audit <- function(data, uname, m0, m1, splinesobj,
             audit_count <- audit_count + 1
 
             if (audit_count <= audit.max) {
-                message(gsub("\\s+", " ",
-                             "Bounds extend to +/- infinity.
+                if (noisy) {
+                    message(gsub("\\s+", " ",
+                                 "Bounds extend to +/- infinity.
                              Expanding grid..."))
-                message("")
+                    message("")
+                }
                 next
             } else {
-                message(gsub("\\s+", " ",
-                             "Bounds extend to +/- infinity."))
-                message("")
-
+                if (noisy) {
+                    message(gsub("\\s+", " ",
+                                 "Bounds extend to +/- infinity."))
+                    message("")
+                }
                 stop(gsub("\\s+", " ",
                           paste0("Estimation terminated: maximum number of
                           audits (audit.max = ", audit.max, ") reached, but
@@ -534,10 +550,11 @@ audit <- function(data, uname, m0, m1, splinesobj,
                      audit.tol) &
                     (abs((lpresult$max - prevbound[2]) / prevbound[2]) <
                      audit.tol)) {
-
-                    message(gsub("\\s+", " ",
-                                 "Audit ending: change in bounds falls
-                                 below tolerance level.\n"))
+                    if (noisy) {
+                        message(gsub("\\s+", " ",
+                                     "    Audit ending: change in bounds falls
+                                     below tolerance level.\n"))
+                    }
                     break
                 } else {
                     prevbound <- c(lpresult$min, lpresult$max)
@@ -567,40 +584,54 @@ audit <- function(data, uname, m0, m1, splinesobj,
         ## Test for violations
         violatevecMin <- mapply(">", (a_mbA %*% solVecMin), a_mbrhs)
         violatevecMax <- mapply(">", (a_mbA %*% solVecMax), a_mbrhs)
-
+        ## Deal with special cases where constraints may be
+        ## binding, and machine precision fails to recognize this
+        ## and treats it as a violation
+        if (sum(violatevecMin) > 0) {
+            violatepos <- which(violatevecMin == TRUE)
+            equality <- mapply(all.equal, (a_mbA %*% solVecMin)[violatepos],
+                               a_mbrhs[violatepos])
+            violatevecMin[equality == TRUE] <- FALSE
+        }
+        if (sum(violatevecMax) > 0) {
+            violatepos <- which(violatevecMax == TRUE)
+            equality <- mapply(all.equal, (a_mbA %*% solVecMax)[violatepos],
+                               a_mbrhs[violatepos])
+            violatevecMax[equality == TRUE] <- FALSE
+        }
         violatevec <- violatevecMin + violatevecMax
         violate <- as.logical(sum(violatevec))
-
         if (violate) {
-
             violate_pos <- which(violatevec == TRUE)
             violate_index <- unique(a_mbobj$mbmap[violate_pos])
-            grid_index <- unique(c(grid_index, violate_index))
+            if (!noX) grid_index <- unique(c(grid_index, violate_index))
             if (!noX) {
                 grid_resid <- grid_resid[!grid_resid %in% violate_index]
             }
-
             uvec <- sort(unique(c(uvec, c(a_mbobj$mbumap[violate_pos, ]))))
             audit_count <- audit_count + 1
 
             if (audit_count <= audit.max) {
-                message("Expanding audit grid...\n")
+                if (noisy) message("Expanding audit grid...\n")
             } else {
-                message(gsub("\\s+", " ",
-                             paste0("Audit ending: maximum number of audits
+                if (noisy) {
+                    message(gsub("\\s+", " ",
+                                 paste0("Audit ending: maximum number of audits
                              (audit.max = ", audit.max, ") reached.\n")))
+                }
                 break
             }
         } else {
-            message(gsub("\\s+", " ",
-                         "Audit ending: no violations of monotonicity or
-                         boundedness restrictions by points chosen off of the
-                         grid defining shape restrictions for the LP
-                         problem.\n"))
+            if (noisy) {
+                message(gsub("\\s+", " ",
+                             "Audit ending: no violations of monotonicity or
+                              boundedness restrictions by points chosen off of
+                              the grid defining shape restrictions for the LP
+                              problem.\n"))
+            }
             break
         }
     }
-
     return(list(max = lpresult$max,
                 min = lpresult$min,
                 maxresult = lpresult$maxresult,
@@ -609,5 +640,6 @@ audit <- function(data, uname, m0, m1, splinesobj,
                 solutionMax = solVecMax,
                 lpresult = lpresult,
                 minobseq = minobseq$obj,
-                gridobj = mbobj$gridobj))
+                gridobj = mbobj$gridob,
+                auditcount = audit_count))
 }

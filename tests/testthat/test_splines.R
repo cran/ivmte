@@ -12,11 +12,11 @@ ivlike <- c(ey ~ d,
 
 components <- l(c(intercept, d), d, c(d, x))
 
-set.seed(10L)
 result <- ivmte(ivlike = ivlike,
                 data = dtsf,
                 components = components,
                 propensity = p,
+                treat = d,
                 m1 = ~ x + uSplines(degree = 2,
                                     knots = c(0.3, 0.6),
                                     intercept = FALSE),
@@ -37,7 +37,8 @@ result <- ivmte(ivlike = ivlike,
                 m1.ub = 55,
                 m0.lb = 0,
                 mte.inc = TRUE,
-                lpsolver = "lpSolveAPI")
+                lpsolver = "lpSolveAPI",
+                seed = 10L)
 
 ##-------------------------
 ## Perform tests
@@ -431,6 +432,7 @@ resultAlt <- ivmte(ivlike = ivlike,
                    data = dtsf,
                    components = components,
                    propensity = p,
+                   treat = d,
                    m1 = ~ x + uSplines(degree = 2,
                                        knots = c(0.3, 0.6),
                                        intercept = FALSE),

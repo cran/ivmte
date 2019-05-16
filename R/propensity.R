@@ -56,7 +56,7 @@ propensity <- function(formula, data, link = "logit", late.Z,
     ## If two-sided formula is provided, estimate propensity score
     ## accordingly
     if (length(formula)[1] == 1 & length(formula)[2] == 1) {
-        
+
         ## obtain design matrix
         if (link == "linear") prop <-  lm(formula, data)
         if (link == "logit")  prop <- glm(formula,
@@ -70,12 +70,13 @@ propensity <- function(formula, data, link = "logit", late.Z,
 
         phat[which(phat < 0)] <- 0
         phat[which(phat > 1)] <- 1
+
         return(list(model = prop, phat = phat))
         
     } else if (length(formula)[1] == 0 & length(formula)[2] == 1) {
         
         ## If one-sided formula is provided, containing only one
-        ## variable, then that variable is the proepnsity score
+        ## variable, then that variable is the propensity score
 
         ## Check that only one variable is submitted. This variable is
         ## the one in the data containing the propensity scores

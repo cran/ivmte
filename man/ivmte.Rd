@@ -2,19 +2,18 @@
 % Please edit documentation in R/mst.R
 \name{ivmte}
 \alias{ivmte}
-\title{Estimation procedure from Mogstad, Torgovitsky (2017)}
+\title{Instrumental Variables: Extrapolation by Marginal Treatment Effects}
 \usage{
 ivmte(bootstraps = 0, bootstraps.m, bootstraps.replace = TRUE,
   levels = c(0.99, 0.95, 0.9), ci.type = "both", pvalue.tol = 1e-08,
-  ivlike, data, subset, components, propensity, link, treat, m0, m1,
-  uname = u, target, target.weight0 = NULL, target.weight1,
+  ivlike, data, subset, components, propensity, link = "logit", treat,
+  m0, m1, uname = u, target, target.weight0 = NULL, target.weight1,
   target.knots0, target.knots1 = NULL, late.Z, late.from, late.to,
   late.X, eval.X, genlate.lb, genlate.ub, obseq.tol = 0.05,
-  grid.nu = 20, grid.nx = 20, audit.nx = 2, audit.nu = 3,
-  audit.max = 5, audit.tol = 1e-08, m1.ub, m0.ub, m1.lb, m0.lb, mte.ub,
-  mte.lb, m0.dec, m0.inc, m1.dec, m1.inc, mte.dec, mte.inc,
-  lpsolver = NULL, point = FALSE, point.itermax = 2,
-  point.tol = 1e-08, noisy = TRUE)
+  grid.nu = 20, grid.nx = 20, audit.nx = 20, audit.nu = 20,
+  audit.max = 10, audit.tol = 1e-08, m1.ub, m0.ub, m1.lb, m0.lb,
+  mte.ub, mte.lb, m0.dec, m0.inc, m1.dec, m1.inc, mte.dec, mte.inc,
+  lpsolver = NULL, point = FALSE, noisy = TRUE, seed = 12345)
 }
 \arguments{
 \item{bootstraps}{integer, default set to 0.}
@@ -61,10 +60,14 @@ binary variable is \code{use}, and the subset condition is
 \item{components}{a list of vectors of the terms/components from
 the regressions specifications we want to include in the set of
 IV-like estimands. To select the intercept term, include in the
-vector of variable names, `intercept'. See \code{\link{l}} on
-how to input the argument. If no components for a IV
-specification are given, then all components from that IV
-specification will be included.}
+vector of variable names, `intercept'. If the the factorized
+counterpart of a variable \code{x = 1, 2, 3} is included in the
+IV-like specifications via \code{factor(x)}, the user can
+select the coefficients for specific factors by declaring the
+components \code{factor(x)-1, factor(x)-2, factor(x)-3}. See
+\code{\link{l}} on how to input the argument. If no components
+for a IV specification are given, then all components from that
+IV specification will be included.}
 
 \item{propensity}{formula or variable name corresponding to
 propensity to take up treatment. If a formula is declared, then
@@ -74,7 +77,8 @@ then the corresponding column in the data is taken as the
 vector of propensity scores.}
 
 \item{link}{name of link function to estimate propensity score. Can
-be chosen from \code{linear}, \code{probit}, or \code{logit}.}
+be chosen from \code{linear}, \code{probit}, or
+\code{logit}. Default is set to "logit".}
 
 \item{treat}{variable name for treatment indicator}
 
@@ -116,16 +120,16 @@ instead of a function.}
 \item{target.knots0}{user-defined set of functions defining the
 knots associated with splines weights for the control
 group. The arguments of the function should consist only of
-variable names in \code{data}. If the knot is constant across
-all observations, then the user can instead submit the value of
-the weight instead of a function.}
+variable names in \code{data}. If the knots are constant across
+all observations, then the user can instead submit the vector
+of knots instead of a function.}
 
 \item{target.knots1}{user-defined set of functions defining the
 knots associated with splines weights for the treated
 group. The arguments of the function should be variable names
-in \code{data}. If the knot is constant across all
-observations, then the user can instead submit the value of the
-weight instead of a function.}
+in \code{data}. If the knots are constant across all
+observations, then the user can instead submit the vector of
+knots instead of a function.}
 
 \item{late.Z}{vector of variable names used to define the LATE.}
 
@@ -219,27 +223,18 @@ obtain the bounds on the treatment effect.}
 
 \item{point}{boolean, default set to \code{FALSE}. Set to
 \code{TRUE} if it is believed that the treatment effects are
-point identified. If set to \code{TRUE}, then a FGLS procedure
-is implemented to estimate the treatment effects. Shape
-constraints on the MTRs will be ignored under point
-identification.}
-
-\item{point.itermax}{integer, default of 2. Maximum number of
-iterations allowed for FGLS estimation under point
-identification. So default estimate is the two-step FGLS.}
-
-\item{point.tol}{scalar, set default at 1-e08. Tolerance for bounds
-before automatically switchingto case of point
-identification. So if the estimated bounds are narrower than
-\code{point.tol}, and no shape restrictions are declared, the
-function instead provides a point estimate of the treatment
-effect. The output would be the same as if \code{point} was set
-to \code{TRUE}.}
+point identified. If set to \code{TRUE}, then a two-step GMM
+procedure is implemented to estimate the treatment
+effects. Shape constraints on the MTRs will be ignored under
+point identification.}
 
 \item{noisy}{boolean, default set to \code{TRUE}. If \code{TRUE},
 then messages are provided throughout the estimation
 procedure. Set to \code{FALSE} to suppress all messages,
 e.g. when performing the bootstrap.}
+
+\item{seed}{integer, the seed that determines the random grid in
+the audit procedure.}
 }
 \value{
 Returns a list of results from throughout the estimation
@@ -249,34 +244,16 @@ Returns a list of results from throughout the estimation
     results of the LP problem.
 }
 \description{
-This function estimates bounds on treatment effect parameters,
-following the procedure described in Mogstad, Torgovitsky
-(2017). Of the  parameters, the user can choose from the ATE,
-ATT, ATU, LATE, and generalized LATE. The user is required to
-provide a polynomial expression for the marginal treatment
-responses (MTR), as well as a set of regressions. By restricting
-the set of coefficients on each term of the MTRs to be consistent
-with the regression estimates, the function is able to restrict
-itself to a set of MTRs. The bounds on the treatment effect
-parameter correspond to finding coefficients on the MTRs that
-maximize their average difference.
-}
-\details{
-The estimation procedure relies on the propensity to take up
-treatment. The propensity scores can either be estimated as part of
-the estimation procedure, or the user can specify a variable in the
-data set already containing the propensity scores.
-
-Constraints on the shape of the MTRs and marginal treatment effects
-(MTE) can be imposed by the user, also. Specifically, bounds and
-monotonicity restrictions are permitted. These constraints are only
-enforced over a subset of the data. However, an audit procedure
-randomly selects points outside of this subset to determine whether
-or not the constraints hold. The user can specify how stringent
-this audit procedure is using the function arguments.
-
-Alternatively, point estimates can be obtained. Standard errors for
-point estimates can be constructed using the bootstrap.
+This function provides a general framework for using the marginal treatment
+effect (MTE) to extrapolate. The model is the same binary treatment
+instrumental variable (IV) model considered by
+\href{https://doi.org/10.2307/2951620}{Imbens and Angrist (1994)} and
+\href{https://doi.org/10.1111/j.1468-0262.2005.00594.x}{Heckman and Vytlacil
+(2005)}. The framework on which this function is based was developed by
+\href{https://doi.org/10.3982/ECTA15463}{Mogstad, Santos and Torgovitsky
+(2018)}. See also the recent survey paper on extrapolation in IV models by
+\href{https://doi.org/10.1146/annurev-economics-101617-041813}{Mogstad and
+Torgovitsky (2018)}.
 }
 \examples{
 ivlikespecs <- c(ey ~ d | z,
