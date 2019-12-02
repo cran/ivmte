@@ -4,7 +4,8 @@
 \alias{piv}
 \title{Obtaining IV-like estimands}
 \usage{
-piv(Y, X, Z, lmcomponents, weights = NULL)
+piv(Y, X, Z, lmcomponents = NULL, weights = NULL, order = NULL,
+  excluded = TRUE)
 }
 \arguments{
 \item{Y}{the vector of outcomes.}
@@ -16,9 +17,16 @@ exogenous covariates).}
 in the second stage).}
 
 \item{lmcomponents}{vector of variable names from the second stage
-that we want to include in the S-set of IV-like estimands.}
+that we want to include in the S-set of IV-like estimands. If
+\code{NULL} is submitted, then all components will be included.}
 
 \item{weights}{vector of weights.}
+
+\item{order}{integer, the counter for which IV-like specification
+and component the regression is for.}
+
+\item{excluded}{boolean, to indicate whether or not the regression
+involves excluded variables.}
 }
 \value{
 vector of select coefficient estimates.

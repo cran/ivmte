@@ -26,91 +26,6 @@ vecextract <- function(vector, position, truncation = 0) {
     return(elem)
 }
 
-#' Generating monomials
-#'
-#' This function takes in a first vector of coefficients, and a second
-#' vector declaring which univariate polynomial basis corresponds to
-#' each element ofexponents corresponding to each element of
-#' \code{vector}.
-#' @param vector numeric, a vector of coefficients in a polynomial.
-#' @param basis integer, a vector of the polynomial degrees
-#'     corresponding to the coefficients in \code{vector}
-#' @param zero logical, if \code{FALSE} then \code{vector} does not
-#'     include an element for the constant term. The vector
-#'     \code{basis} will need to be adjusted to account for this in
-#'     order to generate the correct polynomial and monomials.
-#' @param as.function boolean, if \code{FALSE} then polynomials are
-#'     returned; if \code{TRUE} then a function corresponding to the
-#'     polynomial is returned.
-#' @return A list of monomials, in the form of the \code{polynom}
-#'     package.
-genmonomial <- function(vector, basis, zero = FALSE, as.function = FALSE) {
-
-    if (length(basis) == 1 & typeof(basis) == "list") basis <- unlist(basis)
-    if (!zero) basis <- basis + 1
-
-    monolist  <- mapply(genej, pos = basis, length = basis, SIMPLIFY = FALSE)
-    polyinput <- mapply("*", monolist, vector, SIMPLIFY = FALSE)
-
-    if (as.function == FALSE) {
-        poly <- lapply(polyinput, polynom::polynomial)
-    } else {
-        poly <- lapply(polyinput,
-                       function(x) as.function(polynom::polynomial(x)))
-    }
-    return(poly)
-}
-
-#' Generating polynomial functions
-#'
-#' This function takes in a first vector of coefficients, and a second
-#' vector declaring which univariate polynomial basis corresponds to
-#' each element of the first vector. Then it generates a polynomial
-#' function.
-#' @param vector vector of polynomial coefficients.
-#' @param basis vector of exponents corresponding to each element of
-#'     \code{vector}.
-#' @param zero logical, if \code{FALSE} then \code{vector} does not
-#'     include an element for the constant term. The vector
-#'     \code{basis} will need to be adjusted to account for this in
-#'     order to generate the correct polynomial and monomials.
-#' @return A function in the form of the \code{polynom}
-#'     package.
-genpolynomial <- function(vector, basis, zero = FALSE) {
-    if (length(basis) == 1 & typeof(basis) == "list") basis <- unlist(basis)
-    if (!zero) basis <- basis + 1
-
-    polyvec <- replicate(max(basis), 0)
-    polyvec[basis] <- vector
-    return(as.function(polynom::polynomial(polyvec)))
-}
-
-#' Evaluating polynomials
-#'
-#' This function allows one to evaluate a list of polynomials at
-#' various points (the points are allowed to differ across
-#' polynomials). This function will instead be used to evaluate a list
-#' of monomials.
-#' @param polynomials a list of polynomials.
-#' @param points a list/vector of points at which we want to evaluate
-#'     each polynomial.
-#' @return A matrix of values, corresponding to the polynomials
-#'     specified in \code{polynomials} evaluated at the points
-#'     specified in \code{points}.
-polylisteval <- function(polynomials, points) {
-    if (is.list(polynomials)) {
-        if (length(polynomials) != length(points)) {
-            stop(gsub("\\s+", " ",
-                      "List of polynomials to evaluate, and list of points to
-                  evaluate each polynomial, are not equal."))
-        }
-        output <- mapply(predict, polynomials, points)
-    } else {
-        output <- predict(polynomials, points)
-    }
-    return(output)
-}
-
 #' Parsing marginal treatment response formulas
 #'
 #' This function takes in an MTR formula, and then parses the formula
@@ -123,6 +38,8 @@ polylisteval <- function(polynomials, points) {
 #'     for each observation.
 #' @param uname variable name for unobservable used in declaring the
 #'     MTR.
+#' @param env environment, the original environment in which
+#'     the formula was declared.
 #' @param as.function boolean, if \code{FALSE} then a list of the
 #'     polynomial terms are returned; if \code{TRUE} then a list of
 #'     functions corresponding to the polynomials are returned.
@@ -134,6 +51,8 @@ polylisteval <- function(polynomials, points) {
 #'     only one term, \code{x}).
 #'
 #' @examples
+#' dtm <- ivmte:::gendistMosquito()
+#'
 #' ## Declare MTR functions
 #' formula1 = ~ 1 + u
 #' formula0 = ~ 1 + u
@@ -150,32 +69,69 @@ polylisteval <- function(polynomials, points) {
 #'                           as.function = FALSE)
 #'
 #' @export
-polyparse <- function(formula, data, uname = u, as.function = FALSE) {
-
+polyparse <- function(formula, data, uname = "u", env = parent.frame(),
+                      as.function = FALSE) {
     ## update formula parsing
     formula <- Formula::as.Formula(formula)
-    uname   <- deparse(substitute(uname))
-
+    environment(formula) <- env
+    ## Convert uname into a string
+    uname <- deparse(substitute(uname))
+    uname <- gsub("~", "", uname)
+    uname <- gsub("\\\"", "", uname)
     ## Include redundant variable u, so monomials in m0, m1
     ## specifications correspond polynomial coefficients on u
     ## monomials
     data[[uname]] <- 1
     dmat <- design(formula, data)$X
-
-    ## Save original terms for reference as later
-    oterms <- attr(terms(formula), "term.labels")
-
+    oterms <- colnames(dmat)
     ## Separate and parse the original terms
     nterms <- oterms
-    for (sep in c("I\\(", "\\)", "\\*", ":", "  ", "  ")) {
-        nterms <- lapply(nterms, gsub, pattern = sep, replacement = " ")
+    ## Address booleans and their splitting
+    for (op in c("==", "!=", ">", ">=", "<", "<=")) {
+        nterms <- sapply(nterms, gsub,
+                         pattern = paste0(" ", op, " "),
+                         replacement = op)
     }
+    for (sep in c("I\\(", "\\)", "\\*", ":", "  ", "  ")) {
+              nterms <- lapply(nterms, gsub, pattern = sep, replacement = " ")
+        }
     nterms <- strsplit(trimws(unlist(nterms)), " ")
-
+    ## Correct the spltting for factors
+    nterms <- lapply(nterms, function(x) {
+        factorPos <- grep("factor\\(" , x = x)
+        if (length(factorPos) > 0) {
+            for (i in factorPos) {
+                x[i] <- paste0(x[i], ")")
+            }
+        }
+        return(x)
+    })
+    ## Correct the spltting for booleans
+    nterms <- lapply(nterms, function(x) {
+        for (op in c("==", "!=", ">=", "<=", ">",  "<")) {
+            boolPos <- grep(op, x = x)
+            if (length(boolPos) > 0) {
+                for (i in boolPos) {
+                    x[i] <- gsub(op,
+                                 paste0(" ", op, " "), x[i])
+                }
+            }
+        }
+        for (op in c(" < =", " > =")) {
+            boolPos <- grep(op, x = x)
+            if (length(boolPos) > 0) {
+                for (i in boolPos) {
+                    x[i] <- gsub(op,
+                                 gsub(" ", "", op) ,
+                                 x[i])
+                }
+            }
+        }
+        return(x)
+    })
     ## Find monomials of degree 1 ('degree' is with respect to u)
     u_pos <- lapply(nterms, whichforlist, obj = uname)
     u_pos <- which(u_pos > 0)
-
     ## Find monomials of degree exceeding 1, and determine their degree
     trunc_nterms <- lapply(nterms, substr, 0, nchar(uname) + 1)
     uexp_pos     <- lapply(trunc_nterms, whichforlist, obj = paste0(uname, "^"))
@@ -184,29 +140,26 @@ polyparse <- function(formula, data, uname = u, as.function = FALSE) {
                            whichforlist, obj =  paste0(uname, "^"))
     deggtr2      <- FALSE
     if (length(unlist(uexp_subpos)) > 0) deggtr2 <- TRUE
-
     ## Create a matrix stating the degree for each monomial with degree >= 1
     if(length(u_pos) == 0){
         exptab1 <- NULL
     } else {
         exptab1 <- cbind(u_pos, 1)
     }
-
     if (deggtr2) {
-        uexp <- as.numeric(mapply(vecextract,
-                                  nterms[uexp_pos],
-                                  position = uexp_subpos,
-                                  truncation = nchar(uname) + 1))
+        uexpStr <- mapply(vecextract,
+                          nterms[uexp_pos],
+                          position = uexp_subpos,
+                          truncation = nchar(uname) + 1)
+        uexp <- sapply(uexpStr, function(x) eval(parse(text = x), envir = env))
         exptab2 <- cbind(uexp_pos, uexp)
         exptab  <- rbind(exptab1, exptab2)
     } else {
         exptab <- exptab1
     }
-
     if(!is.null(exptab)) {
         colnames(exptab) <- c("term", "degree")
     }
-
     ## Determine which terms do not involve u
     if (length(oterms) > 0) {
         nonuterms    <- unlist(oterms[!seq(1, length(oterms)) %in% exptab[, 1]])
@@ -215,16 +168,14 @@ polyparse <- function(formula, data, uname = u, as.function = FALSE) {
         nonuterms    <- NULL
         nonutermspos <- NULL
     }
-
     if (length(nonuterms) > 0) {
         exptab0 <- cbind(nonutermspos, replicate(length(nonutermspos), 0))
+        rownames(exptab0) <- oterms[nonutermspos]
     } else {
         exptab0  <- NULL
     }
     exptab <- rbind(exptab0, exptab)
-
     if (!is.null(dim(exptab))) exptab <- exptab[order(exptab[, 1]), ]
-
     if (is.matrix(exptab)) {
         exporder <- exptab[, 2]
         colnames(exptab) <- c("term", "degree")
@@ -235,74 +186,13 @@ polyparse <- function(formula, data, uname = u, as.function = FALSE) {
         exporder <- NULL
     }
     names(exporder) <- NULL
-
-    ## generate matrix with monomial coefficients
-    if ("(Intercept)" %in% colnames(dmat)) {
-        exporder <- c(0, exporder)
-        oterms   <- c("(Intercept)", oterms)
+    polymat <- as.matrix(dmat)
+    if (is.null(dim(polymat))) {
+        polymat <- matrix(polymat, ncol = 1)
+        rownames(polymat) <- rownames(data)
     }
-
-    polymat <- as.matrix(dmat[, oterms])
-
-    ## prepare monomials and their integrals
-    polynomial_list <- lapply(split(polymat, seq(1, nrow(polymat))),
-                              genpolynomial,
-                              basis = exporder)
-
-    if (as.function == FALSE) {
-        monomial_list <- lapply(split(polymat, seq(1, nrow(polymat))),
-                                genmonomial,
-                                basis = exporder)
-
-        integral_list <- lapply(monomial_list,
-                                lapply,
-                                polynom::integral)
-        names(integral_list) <- rownames(data)
-    } else {
-        monomial_list <- lapply(split(polymat, seq(1, nrow(polymat))),
-                                genmonomial,
-                                basis = exporder,
-                                as.function = TRUE)
-
-        integral_list <- NULL
-    }
-
-    names(monomial_list) <- rownames(data)
-
-    ## Generate index for non-U variables---this is used to avoid
-    ## collinearity issues in the GMM estimate.
-
-    xIndex <- unlist(lapply(nterms, function(x) {
-        paste(sort(x), collapse = ":")
-    }))
-
-    xIndex[u_pos] <- unlist(lapply(nterms[u_pos], function(x) {
-        paste(sort(x[which(x != uname)]), collapse = ":")
-    }))
-
-    if (length(uexp_pos) > 0) {
-        xIndex[uexp_pos] <- unlist(lapply(seq(1, length(uexp_pos)),
-            function(x) {
-            if (length(nterms[[uexp_pos[x]]]) > 1) {
-                return(paste(sort(nterms[[uexp_pos[x]]][-uexp_subpos[[x]]]),
-                             collapse = ":"))
-            } else {
-                return("")
-            }
-        }))
-    }
-
-    xIndex[xIndex == ""] <- "1"
-
-    if ("(Intercept)" %in% colnames(dmat)) {
-        xIndex <- c("1", xIndex)
-    }
-
-    return(list(plist = polynomial_list,
-                mlist = monomial_list,
-                ilist = integral_list,
+    return(list(polymat = polymat,
                 exporder = exporder,
-                xindex = xIndex,
                 terms = oterms))
 }
 
@@ -318,10 +208,8 @@ polyparse <- function(formula, data, uname = u, as.function = FALSE) {
 polyProduct <- function(poly1, poly2) {
     poly1 <- c(1, 2, 3)
     poly2 <- c(2, 0, -1)
-
     degreeAdd <- seq(0, length(poly2) - 1)
     maxAdd <- max(degreeAdd)
-
     prodMat <- sapply(poly2, function(x) x * poly1)
     prodMat <- sapply(degreeAdd, function(x) c(rep(0, x),
                                                prodMat[, x + 1],
@@ -334,23 +222,26 @@ polyProduct <- function(poly1, poly2) {
 #' This function generates the gamma objects defined in the paper,
 #' i.e. each additive term in E[md], where md is a MTR.
 #'
-#' @param monomials object containing list of list of monomials. Each
-#'     element of the outer list represents an observation in the data
-#'     set, each element in the inner list is a monomial from the
-#'     MTR. The variable is the unobservable u, and the coefficient is
-#'     the evaluation of any interactions with u.
+#' @param monomials [UPDATE DESCRIPTION] object containing list of
+#'     list of monomials. Each element of the outer list represents an
+#'     observation in the data set, each element in the inner list is
+#'     a monomial from the MTR. The variable is the unobservable u,
+#'     and the coefficient is the evaluation of any interactions with
+#'     u.
 #' @param lb vector of lower bounds for the interval of
 #'     integration. Each element corresponds to an observation.
 #' @param ub vector of upper bounds for the interval of
 #'     integration. Each element corresponds to an observation.
 #' @param multiplier a vector of the weights that enter into the
-#'     interal. Each element corresponds to an observation.
-#' @param subset Subset condition used to select observations with
-#'     which to estimate gamma.
+#'     integral. Each element corresponds to an observation.
+#' @param subset The row names/numbers of the subset of observations
+#'     to use.
 #' @param means logical, if TRUE then function returns the terms of
 #'     E[md]. If FALSE, then function instead returns each term of
 #'     E[md | D, X, Z]. This is useful for testing the code,
 #'     i.e. obtaining population estimates.
+#' @param late.rows Boolean vector indicating which observations to
+#'     include when conditioning on covariates X.
 #' @return If \code{means = TRUE}, then the function returns a vector
 #'     of the additive terms in Gamma (i.e. the expectation is over D,
 #'     X, Z, and u). If \code{means = FALSE}, then the function
@@ -359,6 +250,8 @@ polyProduct <- function(poly1, poly2) {
 #'     Z] (i.e. only the integral with respect to u is performed).
 #'
 #' @examples
+#' dtm <- ivmte:::gendistMosquito()
+#'
 #' ## Declare MTR formula
 #' formula0 = ~ 1 + u
 #'
@@ -381,39 +274,26 @@ polyProduct <- function(poly1, poly2) {
 #'
 #' @export
 genGamma <- function(monomials, lb, ub, multiplier = 1,
-                         subset = NULL, means = TRUE) {
-
-    exporder  <- monomials$exporder
-    integrals <- monomials$ilist
-
-    if (!is.null(subset)) integrals <- integrals[subset]
-
+                     subset = NULL, means = TRUE, late.rows = NULL) {
+    if (is.null(late.rows)) late.rows <- rep(TRUE, nrow(monomials$polymat))
+    exporder <- monomials$exporder
+    polymat <- monomials$polymat
+    if (!is.null(subset)) {
+        polymat <- as.matrix(polymat[subset, ])
+        late.rows <- late.rows[as.integer(subset)]
+    }
     nmono <- length(exporder)
-
     ## Determine bounds of integrals (i.e. include weights)
-    if (length(ub) == 1) ub <- replicate(length(integrals), ub)
-    if (length(lb) == 1) lb <- replicate(length(integrals), lb)
-
-    ub <- split(replicate(nmono, ub), seq(length(ub)))
-    lb <- split(replicate(nmono, lb), seq(length(lb)))
-
-    monoeval <- t(mapply(polylisteval, integrals, ub)) -
-        t(mapply(polylisteval, integrals, lb))
-
-    termsN <- length(integrals[[1]])
-    if (termsN == 1) monoeval <- t(monoeval)
-
-    ## The object monoeval is supposed to have as many rows as the
-    ## number of observations used for estimation. However, if the
-    ## provided MTR objects include only one term, R transposes the
-    ## matrix. So below I undo that transpose if the number of terms
-    ## is 1.
-
-    preGamma <- sweep(monoeval,
-                      MARGIN = 1,
-                      STATS = multiplier,
-                      FUN = "*")
-
+    if (length(ub) == 1) ub <- replicate(nrow(polymat), ub)
+    if (length(lb) == 1) lb <- replicate(nrow(polymat), lb)
+    uLbMat <- NULL
+    uUbMat <- NULL
+    for (exp in exporder) {
+        uLbMat <- cbind(uLbMat, monoIntegral(lb, exp) * multiplier)
+        uUbMat <- cbind(uUbMat, monoIntegral(ub, exp) * multiplier)
+    }
+    preGamma <- polymat * (uUbMat - uLbMat)
+    preGamma <- preGamma[late.rows, ]
     if (means) {
         if (is.matrix(preGamma)) {
             gstar <- colMeans(preGamma)
@@ -423,9 +303,26 @@ genGamma <- function(monomials, lb, ub, multiplier = 1,
         names(gstar) <- monomials$terms
         return(gstar)
     } else {
+        if (!is.matrix(preGamma)) preGamma <- matrix(preGamma, ncol = 1)
         colnames(preGamma) <- monomials$terms
         return(preGamma)
     }
+}
+
+
+#' Integrating and evaluating monomials
+#'
+#' Analytically integrates monomials and evalates them at a given
+#' point. It is assumed that there is no constant multiplying the
+#' monomial.
+#'
+#' @param u scalar, the point at which to evaluate the integral. If a
+#'     vector is passed, then the integral is evaluated at all the
+#'     elements of the vector.
+#' @param exp The exponent of the monomial.
+#' @return scalar or vector, depending on what \code{u} is.
+monoIntegral <- function(u, exp) {
+    return((u ^ (exp + 1)) / (exp + 1))
 }
 
 #' Separating splines from MTR formulas
@@ -436,6 +333,9 @@ genGamma <- function(monomials, lb, ub, multiplier = 1,
 #' separately from the terms that do not involve splines when creating
 #' the gamma moments.
 #' @param formula the formula that is to be parsed.
+#' @param env environment in which to formulas. This is necessary as
+#'     splines may be declared using objects, e.g. \code{knots = x},
+#'     where \code{x = c(0.3, 0.64, 0.9)}.
 #' @return a list containing two objects. One object is \code{formula}
 #'     but with the spline components removed. The second object is a
 #'     list. The name of each element is the
@@ -459,11 +359,10 @@ genGamma <- function(monomials, lb, ub, multiplier = 1,
 #' removeSplines(m0)
 #'
 #' @export
-removeSplines <- function(formula) {
-
+removeSplines <- function(formula, env = parent.frame()) {
     fterms <- attr(terms(formula), "term.labels")
+    fterms <- gsub("\\s+", " ", fterms)
     finter <- attr(terms(formula), "intercept")
-
     if (length(fterms) == 0) {
         whichspline <- 0
     } else {
@@ -475,26 +374,29 @@ removeSplines <- function(formula) {
                                                  pattern = "uSpline\\("))
         whichspline <- as.logical(whichspline1 + whichspline2)
     }
-
     if (max(whichspline) == 1) {
         ftobj <- terms(formula)
         splinepos <- which(whichspline == TRUE)
-
         if (length(splinepos) == length(fterms)) {
             if (finter == 0) nosplines <- NULL
             if (finter == 1) nosplines <- ~ 1
         } else {
-            nosplines <- drop.terms(ftobj, splinepos)
+            nosplineterms <- fterms[-splinepos]
+            nosplineterms <- parenthBoolean(nosplineterms)
+            nosplines <- paste("~", paste(nosplineterms,
+                                          collapse = " + "))
+            if (finter != 1) {
+                nosplines <- paste0(nosplines, " + 0")
+            }
             nosplines <- Formula::as.Formula(nosplines)
         }
-
         splineterms <- fterms[whichspline]
+        splineterms <- parenthBoolean(splineterms)
         splineslist <- list()
-
+        splinescall <- list()
         for (splineobj in splineterms) {
             splinepos1 <- regexpr("uSplines\\(", splineobj)
             splinepos2 <- regexpr("uSpline\\(", splineobj)
-
             if (splinepos1 == -1) {
                 splinepos <- splinepos2
                 splineposadd <- 7
@@ -502,29 +404,20 @@ removeSplines <- function(formula) {
                 splinepos <- splinepos1
                 splineposadd <- 8
             }
-
-            degreepos  <- regexpr("degree = ", splineobj)
-            knotspos   <- regexpr("knots = ", splineobj)
-            knotslpos  <- regexpr("knots = c\\(", splineobj)
-            interpos   <- regexpr("intercept = ", splineobj)
-
             ## Check if vectors or sequences are declared to adjust parsing
             firstopen  <- regexpr("\\(",
                                   substr(splineobj,
                                          splinepos + splineposadd + 1,
                                          nchar(splineobj)))
-
             firstclose <- regexpr("\\)",
                                   substr(splineobj,
                                          splinepos + splineposadd + 1,
                                          nchar(splineobj)))
-
             secondclose <- regexpr("\\)",
                                    substr(splineobj,
                                           splinepos + splineposadd + 1 +
                                           firstclose,
                                           nchar(splineobj)))
-
             ## For the case where knots are explcitly declared
             if ((firstopen < firstclose) & (secondclose != - 1)) {
                 splinecmd <- substr(splineobj,
@@ -537,29 +430,49 @@ removeSplines <- function(formula) {
                                     splinepos + splineposadd + 1 +
                                     firstclose - 1)
             }
-
-            ## Separate uSpline/uSplines command from terms interacting with the spline
+            ## Separate uSpline/uSplines command from terms
+            ## interacting with the spline
             splinecmdstr <- gsub("\\)", "\\\\)",
                                  gsub("\\(", "\\\\(", splinecmd))
-
+            splinecmdstr <- gsub("\\$", "\\\\$", splinecmdstr)
+            splinecmdstr <- gsub("\\.", "\\\\.", splinecmdstr)
+            splinecmdstr <- gsub("\\+", "\\\\+", splinecmdstr)
+            splinecmdstr <- gsub("\\*", "\\\\*", splinecmdstr)
+            splinecmdstr <- gsub("\\^", "\\\\^", splinecmdstr)
             interobj <- gsub(paste0(":", splinecmdstr), "", splineobj)
             interobj <- gsub(paste0(splinecmdstr, ":"), "", interobj)
             interobj <- gsub("::", ":", interobj)
-
             if (interobj == splinecmd) interobj <- "1"
-
             if (splinecmd %in% names(splineslist)) {
                 splineslist[[splinecmd]] <- c(splineslist[[splinecmd]],
                                               interobj)
             } else {
                 splineslist[[splinecmd]] <- c(interobj)
             }
+            ## Recover original spline names
+            interobjStr <- gsub("\\)", "\\\\)",
+                                gsub("\\(", "\\\\(", interobj))
+            interobjStr <- gsub("\\^", "\\\\^", interobjStr)
+            if (interobjStr != "1") {
+                vlist <- unlist(strsplit(interobjStr, ":"))
+                for (v in vlist) {
+                    if (grepl(paste0("^", v, ":"), splineobj)) {
+                        splineobj <- gsub(paste0("^", v, ":"), "", splineobj)
+                    }
+                    if (grepl(paste0(":", v, ":"), splineobj)) {
+                        splineobj <- gsub(paste0(":", v, ":"), ":", splineobj)
+                    }
+                    if (grepl(paste0(":", v, "$"), splineobj)) {
+                        splineobj <- gsub(paste0(":", v, "$"), "", splineobj)
+                    }
+                }
+            }
+            splinescall[[splinecmd]] <- unique(c(splinescall[[splinecmd]],
+                                                 splineobj))
         }
-
         ## Now construct spline dictionary and spline keys
         splinesDict <- list()
         splinesKey <- NULL
-
         for (i in 1:length(splineslist)) {
             inDict <- FALSE
             splinesSpecCmd <- gsub("uSplines\\(",
@@ -568,12 +481,11 @@ removeSplines <- function(formula) {
             splinesSpecCmd <- gsub("uSpline\\(",
                                    "list(",
                                    splinesSpecCmd)
-            splinesSpec <- eval(parse(text = splinesSpecCmd))
-
+            splinesSpec <- eval(parse(text = splinesSpecCmd),
+                                envir = env)
             if (! "intercept" %in% names(splinesSpec)) {
                 splinesSpec$intercept = TRUE
             }
-
             ## Check if the spline is already in the dictionary
             if (length(splinesDict) > 0) {
                 j <- 1
@@ -583,24 +495,26 @@ removeSplines <- function(formula) {
                                    splinesSpec$knots) == TRUE) &
                         (splinesDict[[j]]$intercept == splinesSpec$intercept) &
                         (splinesDict[[j]]$degree == splinesSpec$degree)
-
                     j <- j + 1
                 }
             }
-
             ## Update dictionary and key
             if (inDict == FALSE) {
                 splinesDict[[length(splinesDict) + 1]] <-
                     splinesSpec[order(names(splinesSpec))]
+                splinesDict[[length(splinesDict)]]$gstar.index <- i
                 splinesKey <- rbind(splinesKey, c(i, length(splinesDict)))
             } else {
                 splinesKey <- rbind(splinesKey, c(i, j - 1))
             }
         }
         colnames(splinesKey) <- c("spline", "dictKey")
-
-        ## Using dictionary, generate new condensed splines list
+        ## Using dictionary, generate new condensed splines list. In
+        ## addition, store all the original calls for each spline
+        ## (this will be used to determine which variables interact
+        ## with splines).
         splinesList2 <- list()
+        splinesCall2 <- list()
         for (j in 1:length(splinesDict)) {
             dictKey <- paste0("uSpline(degree = ",
                               splinesDict[[j]]$degree,
@@ -610,10 +524,12 @@ removeSplines <- function(formula) {
                               "), intercept = ",
                               splinesDict[[j]]$intercept,
                               ")")
-
             newEntry <- sort(unlist(splineslist[splinesKey[splinesKey[, 2] == j,
                                                            1]]))
-
+            origNameEntry <- unlist(splinescall[splinesKey[splinesKey[, 2] == j,
+                                                           1]])
+            names(origNameEntry) <- NULL
+            splinesCall2[[dictKey]] <- origNameEntry
             ## Convert I() as-is declarations to interactions, if possible
             newEntry <- sapply(newEntry, function(x) {
                 multiply <- grepl("*", x)
@@ -641,11 +557,12 @@ removeSplines <- function(formula) {
     } else {
         nosplines <- formula
         splinesList2 <- NULL
+        splinesCall2 <- NULL
         splinesDict <- NULL
     }
-
     return(list(formula = nosplines,
                 splineslist = splinesList2,
+                splinescall = splinesCall2,
                 splinesdict = splinesDict))
 }
 
@@ -701,16 +618,13 @@ removeSplines <- function(formula) {
 #'                        "ivmte:::uSplineInt(x = x, ",
 #'                        names(splineslist)[2])))
 uSplineInt <- function(x, knots, degree = 0, intercept = TRUE) {
-
     ## Note: warning below is suppressed since it will be provided
     ## when uSplineBasis is run.
-
     if (any(knots < 0) || any(knots > 1)) {
         stop(gsub("\\s+", " ",
                   "When defining splines, each knot must be inside the
                    [0, 1] interval."))
     }
-
     splines2::ibs(x = x,
                   knots = knots,
                   degree = degree,
@@ -769,13 +683,11 @@ uSplineInt <- function(x, knots, degree = 0, intercept = TRUE) {
 #'                        "ivmte:::uSplineBasis(x = x, ",
 #'                        names(splineslist)[2])))
 uSplineBasis <- function(x, knots, degree = 0, intercept = TRUE) {
-
     if (any(knots < 0) || any(knots > 1)) {
         stop(gsub("\\s+", " ",
                   "When defining splines, each knot must be inside the
                    [0, 1] interval."))
     }
-
     splines2::bSpline(x = x,
                       knots = knots,
                       degree = degree,
@@ -791,7 +703,7 @@ uSplineBasis <- function(x, knots, degree = 0, intercept = TRUE) {
 #' the splines. The specifications for the spline must be passed as an
 #' element generated by \code{\link{removeSplines}}. This function
 #' accounts for the interaction between covariates and splines.
-#' @param splines a list generated by \code{\link{removeSplines}}
+#' @param splinesobj a list generated by \code{\link{removeSplines}}
 #'     applied to either the \code{m0} and \code{m1} argument.
 #' @param data a \code{data.frame} object containing all the variables
 #'     that interact with the spline components.
@@ -808,6 +720,8 @@ uSplineBasis <- function(x, knots, degree = 0, intercept = TRUE) {
 #'     \code{TRUE} if estimates of the gamma moments should be
 #'     returned. Set to \code{FALSE} if the gamma estimates for each
 #'     observation should be returned.
+#' @param late.rows Boolean vector indicating which observations to
+#'     include when conditioning on covariates X.
 #' @return a matrix, corresponding to the splines being integrated
 #'     over the region specified by \code{lb} and \code{ub},
 #'     accounting for the interaction terms. The number of rows is
@@ -820,87 +734,98 @@ uSplineBasis <- function(x, knots, degree = 0, intercept = TRUE) {
 #'     which element of the list \code{splines} the column pertains
 #'     to. "[b]" will be an integer reflect which component of the
 #'     basis the column pertains to.
-genGammaSplines <- function(splines, data, lb, ub, multiplier = 1,
-                                subset, d = NULL, means = TRUE) {
-
-    splines <- splines$splineslist
-    
+genGammaSplines <- function(splinesobj, data, lb, ub, multiplier = 1,
+                            subset, d = NULL, means = TRUE,
+                            late.rows = NULL) {
+    if (is.null(late.rows)) late.rows <- rep(TRUE, nrow(data))
+    splines <- splinesobj$splineslist
+    inters  <- splinesobj$splinesinter
     if (is.null(splines)) {
         return(list(gamma = NULL,
                     interactions = NULL))
     } else {
         if (!hasArg(subset)) {
             subset <- replicate(nrow(data), TRUE)
-            gmmRownames <- rownames(data)
         } else {
-            gmmRownames <- rownames(data)[as.integer(eval(subset, data))]
+            late.rows <- late.rows[as.integer(subset)]
         }
-
         if (length(lb) == 1) lb <- replicate(nrow(data[subset, ]), lb)
         if (length(ub) == 1) ub <- replicate(nrow(data[subset, ]), ub)
-
         splinesGamma <- NULL
         splinesNames <- NULL
         splinesInter <- NULL
-
         for (j in 1:length(splines)) {
-
-            ## Design matrix for covariates
-            if ("1" %in% splines[[j]]) {
-                nonSplineFormula <- as.formula(paste("~",
-                                                     paste(splines[[j]],
-                                                           collapse = " + ")))
-            } else {
-                nonSplineFormula <- as.formula(paste("~ 0 + ",
-                                                     paste(splines[[j]],
-                                                           collapse = " + ")))
+            ## Construct design matrix for each interaction at a
+            ## time. Only include the interactions contained in the
+            ## 'inters' object.
+            inters[[j]][which(inters[[j]] == "1")] <- "(Intercept)"
+            nonSplinesDmat <- NULL
+            for (k in 1:length(splines[[j]])) {
+                if (splines[[j]][k] != "1") {
+                    tmpDmat <- design(as.formula(paste("~ 0 +",
+                                                       splines[[j]][k])),
+                                      data)$X
+                    nonSplinesDmat <- cbind(nonSplinesDmat, tmpDmat)
+                } else {
+                    nonSplinesDmat <- cbind(nonSplinesDmat,
+                                            design(~ 1, data)$X)
+                }
             }
-            nonSplinesDmat <- design(nonSplineFormula,
-                                         data[subset, ])$X
-
+            colnames(nonSplinesDmat) <- parenthBoolean(colnames(nonSplinesDmat))
+            currentNames <- colnames(nonSplinesDmat)
+            keepPos <- colnames(nonSplinesDmat) %in% inters[[j]]
+            nonSplinesDmat <- as.matrix(nonSplinesDmat[, keepPos])
+            colnames(nonSplinesDmat) <- currentNames[keepPos]
+            ## Fill in the gstar with any missing variables---if
+            ## assigned values of 0, they will not affect the LP
+            ## optimization
+            missingVars <- inters[[j]][!inters[[j]] %in%
+                                       colnames(nonSplinesDmat)]
+            if (length(missingVars) > 0) {
+                for (mv in missingVars) {
+                    nonSplinesDmat[, mv] <- 0
+                }
+                nonSplinesDmat <- nonSplinesDmat[, inters[[j]]]
+            }
             ## Spline integral matrices
             splinesLB <- eval(parse(text = gsub("uSpline\\(",
                                                 "uSplineInt(x = lb, ",
                                                 names(splines)[j])))
-
             splinesUB <- eval(parse(text = gsub("uSpline\\(",
                                                 "uSplineInt(x = ub, ",
                                                 names(splines)[j])))
             splinesInt <- splinesUB - splinesLB
-
             ## Combine the design and integral matrices
-            for (l in 1:length(splines[[j]])) {
-
+            ## for (l in 1:length(splines[[j]])) {
+            for (l in 1:length(colnames(nonSplinesDmat))) {
                 tmpGamma <- sweep(splinesInt,
                                   MARGIN = 1,
-                                  STATS = nonSplinesDmat[, l],
+                                  STATS = nonSplinesDmat[subset, l],
                                   FUN = "*")
-
                 tmpGamma <- sweep(x = tmpGamma,
                                   MARGIN = 1,
                                   STATS = multiplier,
                                   FUN = "*")
-
                 splinesNames <- c(splinesNames,
                                   paste0(paste0("u", d, "S", j, "."),
                                          seq(1, ncol(tmpGamma)),
-                                         paste0(":", splines[[j]][l])))
+                                         paste0(":",
+                                                colnames(nonSplinesDmat)[l])))
                 splinesGamma <- cbind(splinesGamma, tmpGamma)
                 splinesInter <- c(splinesInter,
-                                  rep(splines[[j]][[l]],
+                                  rep(colnames(nonSplinesDmat)[l],
                                       ncol(tmpGamma)))
             }
         }
-
+        splinesNames <- gsub(":\\(Intercept\\)", ":1", splinesNames)
+        splinesNames <- gsub("\\(Intercept\\):", "1:", splinesNames)
+        splinesGamma <- splinesGamma[late.rows, ]
         if (means == TRUE) {
             splinesGamma <- colMeans(splinesGamma)
             names(splinesGamma) <- splinesNames
         } else {
             colnames(splinesGamma) <- splinesNames
-            rownames(splinesGamma) <- gmmRownames
         }
-
-        ## return(splinesGamma)
         return(list(gamma = splinesGamma,
                     interactions = splinesInter))
     }
@@ -935,24 +860,18 @@ genGammaSplines <- function(splines, data, lb, ub, multiplier = 1,
 #'     \code{splines} the column pertains to. "[b]" will be an integer
 #'     reflect which component of the basis the column pertains to.
 genBasisSplines <- function(splines, x, d = NULL) {
-
     if (is.null(splines)) {
         return(NULL)
     } else {
-
         bmatList <- list()
-
         for (j in 1:length(splines)) {
             splinesBasis <- NULL
             splinesNames <- NULL
-
             bmat <- eval(parse(text = gsub("uSpline\\(",
                                            "uSplineBasis(x = x, ",
                                            names(splines[j]))))
-
             colnames(bmat) <- paste0(paste0("u", d, "S", j, "."),
                                      seq(1, ncol(bmat)))
-
             bmatList[[j]] <- bmat
         }
         return(bmatList)
@@ -988,4 +907,38 @@ constructConstant <- function(x) {
         x
     }
     return(fun)
+}
+
+
+#' Correct boolean expressions in terms lists
+#'
+#' This function takes a vector of terms and places parentheses around
+#' boolean expressions.
+#' @param termsList character vector, the vector of terms.
+#' @return character vector.
+parenthBoolean <- function(termsList) {
+    termsList <- lapply(termsList, function(x) {
+        tmpTerms <- unlist(strsplit(x, ":"))
+        for (op in c("==", "!=", ">", ">=", "<", "<=")) {
+            boolPos <- grep(op, tmpTerms)
+            if (length(boolPos > 0)) {
+                for (j in boolPos) {
+                    if (substr(tmpTerms[j], 1, 1) != "(") {
+                        if (substr(tmpTerms[j], 1, 2) != "I(") {
+                            tmpTerms[j] <- paste0("(", tmpTerms[j], ")")
+                            tmpTerms[j] <- gsub("TRUE)",
+                                                ")TRUE",
+                                                tmpTerms[j])
+                            tmpTerms[j] <- gsub("FALSE)",
+                                                ")FALSE",
+                                                tmpTerms[j])
+                        }
+                    }
+                }
+            }
+        }
+        paste(tmpTerms, collapse = ":")
+    })
+    termsList <- unlist(termsList)
+    return(termsList)
 }

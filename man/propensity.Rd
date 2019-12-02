@@ -4,7 +4,8 @@
 \alias{propensity}
 \title{Estimating propensity scores}
 \usage{
-propensity(formula, data, link = "logit", late.Z, late.X)
+propensity(formula, data, link = "logit", late.Z, late.X,
+  env = parent.frame())
 }
 \arguments{
 \item{formula}{Formula characterizing probability model. If a
@@ -26,6 +27,9 @@ LATE.}
 variables. This is required when the target parameter is the
 LATE, and the estimation procedure will condition on these
 variables.}
+
+\item{env}{environment, the environment for the original
+propensity score formula.}
 }
 \value{
 A vector of propensity scores for each observation, as well
@@ -51,6 +55,8 @@ scores in the data conditioned on the set of covariates declared in
 \code{late.X} and \code{late.Z}.
 }
 \examples{
+dtm <- ivmte:::gendistMosquito()
+
 ## Declaring a probability model.
 propensity(formula = d ~ z,
                data = dtm,

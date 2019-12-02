@@ -2,9 +2,11 @@
 % Please edit documentation in R/mst.R
 \name{gmmEstimate}
 \alias{gmmEstimate}
-\title{Two-step GMM estimate of TE under point identification}
+\title{GMM estimate of TE under point identification}
 \usage{
-gmmEstimate(sset, gstar0, gstar1, noisy = TRUE)
+gmmEstimate(sset, gstar0, gstar1, center = NULL, subsetList = NULL,
+  n = NULL, redundant = NULL, identity = FALSE, nMoments, splines,
+  noisy = TRUE)
 }
 \arguments{
 \item{sset}{a list of lists constructed from the function
@@ -19,6 +21,32 @@ is what is used to generate the gamma moments.}
 
 \item{gstar1}{vector, the target gamma moments for d = 1.}
 
+\item{center}{numeric, the GMM moment equations from the original
+sample. When bootstrapping, the solution to the point
+identified case obtained from the original sample can be passed
+through this argument to recenter the bootstrap distribution of
+the J-statistic.}
+
+\item{subsetList}{list of subset indexes, one for each IV-like
+specification.}
+
+\item{n}{number of observations in the data. This option is only
+used when subsetting is involved.}
+
+\item{redundant}{vector of integers indicating which components in
+the S-set are redundant.}
+
+\item{identity}{boolean, default set to \code{FALSE}. Set to
+\code{TRUE} if GMM point estimate should use the identity
+weighting matrix (i.e. one-step GMM).}
+
+\item{nMoments}{number of linearly independent moments. This option
+is used to determine the cause of underidentified cases.}
+
+\item{splines}{boolean, set to \code{TRUE} if the MTRs involve
+splines. This option is used to determine the cause of
+underidentified cases.}
+
 \item{noisy}{boolean, default set to \code{TRUE}. If \code{TRUE},
 then messages are provided throughout the estimation
 procedure. Set to \code{FALSE} to suppress all messages,
@@ -26,11 +54,10 @@ e.g. when performing the bootstrap.}
 }
 \value{
 a list containing the point estimate of the treatment
-    effects, the standard errors, the 90% and 95% confidence
-    intervals, the convergence code (see
-    \code{\link[stats]{optim}}), the coefficients on the MTR, and
-    the variance/covariance matrix of the MTR coefficient
-    estimates.
+    effects, and the MTR coefficient estimates. The moment
+    conditions evaluated at the solution are also returned, along
+    with the J-test results. However, if the option \code{center}
+    is passed, then the moment conditions and J-test are centered.
 }
 \description{
 If the user sets the argument \code{point = TRUE} in the function
@@ -42,6 +69,8 @@ m1. Combining these coefficients with the target gamma moments
 allows us to estimate the target treatment effect.
 }
 \examples{
+dtm <- ivmte:::gendistMosquito()
+
 ## Declare empty list to be updated (in the event multiple IV like
 ## specifications are provided
 sSet <- list()
@@ -81,7 +110,6 @@ ivEstimates <- ivEstimate(formula = ey ~ d | z,
 targetGamma <- genTarget(treat = "d",
                          m0 = ~ 1 + u,
                          m1 = ~ 1 + u,
-                         uname = u,
                          target = "atu",
                          data = dtm,
                          splinesobj = splinesList,

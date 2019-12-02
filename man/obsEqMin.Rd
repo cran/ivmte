@@ -4,16 +4,33 @@
 \alias{obsEqMin}
 \title{Minimizing violation of observational equivalence}
 \usage{
-obsEqMin(sset, lpobj, lpsolver)
+obsEqMin(sset, orig.sset = NULL, orig.criterion = NULL,
+  criterion.tol = 0, lpobj, lpsolver, debug = FALSE)
 }
 \arguments{
 \item{sset}{A list of IV-like estimates and the corresponding gamma
 terms.}
 
+\item{orig.sset}{list, only used for bootstraps. The list
+caontains the gamma moments for each element in the S-set, as
+well as the IV-like coefficients.}
+
+\item{orig.criterion}{numeric, only used for bootstraps. The scalar
+corresponds to the minimum observational equivalence criterion
+from the original sample.}
+
+\item{criterion.tol}{tolerance for violation of observational
+equivalence, set to 0 by default.}
+
 \item{lpobj}{A list of matrices and vectors defining an LP problem.}
 
 \item{lpsolver}{string, name of the package used to solve the LP
 problem.}
+
+\item{debug}{boolean, indicates whether or not the function should
+provide output when obtaining bounds. The option is only
+applied when \code{lpsolver = 'gurobi'}. The output provided is
+the same as what the Gurobi API would send to the console.}
 }
 \value{
 A list including the minimum violation of observational
@@ -26,6 +43,8 @@ defining an LP problem, this function minimizes the violation of
 observational equivalence under the L1 norm.
 }
 \examples{
+dtm <- ivmte:::gendistMosquito()
+
 ## Declare empty list to be updated (in the event multiple IV like
 ## specifications are provided
 sSet <- list()
@@ -65,7 +84,6 @@ ivEstimates <- ivEstimate(formula = ey ~ d | z,
 targetGamma <- genTarget(treat = "d",
                          m0 = ~ 1 + u,
                          m1 = ~ 1 + u,
-                         uname = u,
                          target = "atu",
                          data = dtm,
                          splinesobj = splinesList,

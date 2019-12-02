@@ -1,11 +1,12 @@
 context("Test of case involving only covariates, no splines.")
-
 set.seed(10L)
 
 ##------------------------
 ## Run MST estimator
 ##------------------------
 
+dtcf <- ivmte:::gendistCovariates()$data.full
+dtc <- ivmte:::gendistCovariates()$data.dist
 ivlike <- c(ey ~ d,
             ey ~ d + x1,
             ey ~ d + x1 + x2,
@@ -13,23 +14,22 @@ ivlike <- c(ey ~ d,
             ey ~ d | factor(z2))
 components <- l(d, d, c(d, x1, x2), d, d)
 subsets    <- l(, , z2 %in% c(2, 3), , z2 %in% c(2, 3))
-
 result <- ivmte(ivlike = ivlike,
                 data = dtcf,
                 components = components,
                 subset = subsets,
                 propensity = p,
-                m0 = ~ x1 + I(x2 * u) + I(x2 * u^2),
-                m1 = ~ x1 + I(x1 * x2) + u + I(x1 * u) + I(x2 * u^2),
+                m0 = ~ x1 + x2:u + x2:I(u^2),
+                m1 = ~ x1 + x1:x2 + u + x1:u + x2:I(u^2),
                 uname = u,
                 target = "genlate",
                 genlate.lb = 0.2,
                 genlate.ub = 0.7,
-                obseq.tol = 0.01,
-                grid.nu = 3,
-                grid.nx = 2,
-                audit.nx = 1,
+                criterion.tol = 0.01,
+                initgrid.nu = 1,
+                initgrid.nx = 2,
                 audit.nu = 5,
+                audit.nx = 3,
                 m0.inc = TRUE,
                 m1.inc = TRUE,
                 mte.dec = TRUE,
@@ -44,7 +44,6 @@ result <- ivmte(ivlike = ivlike,
 ## Construct additional variables for which we need means of
 dtc$ey <- dtc$ey1 * dtc$p + dtc$ey0 * (1 - dtc$p)
 dtc$eyd <- dtc$ey1 * dtc$p
-
 varlist <- ~  eyd + ey + ey0 + ey1 + p + x1 + x2 + z1 + z2 +
     I(ey * p) + I(ey * x1) + I(ey * x2) + I(ey * z1) + I(ey * z2) +
     I(ey0 * p) + I(ey0 * x1) + I(ey0 * x2) + I(ey0 * z1) + I(ey0 * z2) +
@@ -54,7 +53,6 @@ varlist <- ~  eyd + ey + ey0 + ey1 + p + x1 + x2 + z1 + z2 +
     I(x2 * p) + I(x2 * x1) + I(x2 * x2) + I(x2 * z1) + I(x2 * z2) +
     I(z1 * p) + I(z1 * x1) + I(z1 * x2) + I(z1 * z1) + I(z1 * z2) +
     I(z2 * p) + I(z2 * x1) + I(z2 * x2) + I(z2 * z1) + I(z2 * z2)
-
 mv1 <- popmean(varlist, dtc)
 m1 <- as.list(mv1)
 names(m1) <- rownames(mv1)
@@ -67,10 +65,8 @@ ols1.exx <- symat(c(1, m1[["p"]], m1[["x1"]], m1[["x2"]],
                    m1[["p"]], m1[["I(p * x1)"]], m1[["I(p * x2)"]],
                    m1[["I(x1 * x1)"]], m1[["I(x1 * x2)"]],
                    m1[["I(x2 * x2)"]]))
-
 ols1.exy <- matrix(c(m1[["ey"]], m1[["eyd"]], m1[["I(ey * x1)"]],
                      m1[["I(ey * x2)"]]))
-
 ols1 <- (solve(ols1.exx[1:2, 1:2]) %*% ols1.exy[1:2])[2]
 
 ##-------------------------
@@ -86,16 +82,13 @@ ols2 <- (solve(ols1.exx[1:3, 1:3]) %*% ols1.exy[1:3])[2]
 mv2 <- popmean(varlist, subset(dtc, dtc$z2 %in% c(2, 3)))
 m2 <- as.list(mv2)
 names(m2) <- rownames(mv2)
-
 ols2.exx <- symat(c(1, m2[["p"]], m2[["x1"]], m2[["x2"]],
                    m2[["p"]], m2[["I(p * x1)"]], m2[["I(p * x2)"]],
                    m2[["I(x1 * x1)"]], m2[["I(x1 * x2)"]],
                    m2[["I(x2 * x2)"]]))
-
 ols2.exy <- matrix(c(m2[["ey"]], m2[["eyd"]],
                      m2[["I(ey * x1)"]],
                      m2[["I(ey * x2)"]]))
-
 ols3 <- (solve(ols2.exx) %*% ols2.exy)[2:4]
 
 ##-------------------------
@@ -112,19 +105,15 @@ tsls.exz <- matrix(c(1, m1[["p"]], m1[["x1"]], m1[["x2"]],
                      m1[["x2"]], m1[["I(x2 * p)"]], m1[["I(x2 * x1)"]],
                          m1[["I(x2 * x2)"]]),
                  nrow = 4)
-
 tsls.ezz <- symat(c(1, m1[["z1"]], m1[["z2"]], m1[["x1"]], m1[["x2"]],
                     m1[["I(z1 * z1)"]], m1[["I(z1 * z2)"]], m1[["I(z1 * x1)"]],
                         m1[["I(z1 * x2)"]],
                     m1[["I(z2 * z2)"]], m1[["I(z2 * x1)"]], m1[["I(z2 * x2)"]],
                     m1[["I(x1 * x1)"]], m1[["I(x1 * x2)"]],
                     m1[["I(x2 * x2)"]]))
-
 tsls.pi <- tsls.exz %*% solve(tsls.ezz)
-
 tsls.ezy <- matrix(c(m1[["ey"]], m1[["I(ey * z1)"]], m1[["I(ey * z2)"]],
                      m1[["I(ey * x1)"]], m1[["I(ey * x2)"]]))
-
 tsls <- (solve(tsls.pi %*% t(tsls.exz)) %*% tsls.pi %*% tsls.ezy)[2]
 
 ##-------------------------
@@ -133,10 +122,8 @@ tsls <- (solve(tsls.pi %*% t(tsls.exz)) %*% tsls.pi %*% tsls.ezy)[2]
 
 ey.z2.2 <- popmean(~ 0 + ey, subset(dtc, dtc$z2 == 2))
 ey.z2.3 <- popmean(~ 0 + ey, subset(dtc, dtc$z2 == 3))
-
 ed.z2.2 <- popmean(~ 0 + p, subset(dtc, dtc$z2 == 2))
 ed.z2.3 <- popmean(~ 0 + p, subset(dtc, dtc$z2 == 3))
-
 wald <- (ey.z2.3 - ey.z2.2) / (ed.z2.3 - ed.z2.2)
 
 ##-------------------------
@@ -178,7 +165,6 @@ dtc$s.ols2.0.d <- sapply(dtc$x1, sOls2d,
 dtc$s.ols2.1.d <- sapply(dtc$x1, sOls2d,
                          d = 1,
                          exx = ols1.exx)
-
 g.ols2 <- genGammaTT(dtc, "s.ols2.0.d", "s.ols2.1.d")
 
 ##-------------------------
@@ -187,7 +173,6 @@ g.ols2 <- genGammaTT(dtc, "s.ols2.0.d", "s.ols2.1.d")
 
 ## Generate weights
 dtc.x <- split(as.matrix(dtc[, c("x1", "x2")]), seq(1, nrow(dtc)))
-
 dtc$s.ols3.0.d <- unlist(lapply(dtc.x, sOls3,
                                 d = 0,
                                 j = 2,
@@ -196,7 +181,6 @@ dtc$s.ols3.1.d <- unlist(lapply(dtc.x, sOls3,
                                 d = 1,
                                 j = 2,
                                 exx = ols2.exx))
-
 dtc$s.ols3.0.x1 <- unlist(lapply(dtc.x, sOls3,
                                  d = 0,
                                  j = 3,
@@ -205,7 +189,6 @@ dtc$s.ols3.1.x1 <- unlist(lapply(dtc.x, sOls3,
                                  d = 1,
                                  j = 3,
                                  exx = ols2.exx))
-
 dtc$s.ols3.0.x2 <- unlist(lapply(dtc.x, sOls3,
                                  d = 0,
                                  j = 4,
@@ -214,7 +197,6 @@ dtc$s.ols3.1.x2 <- unlist(lapply(dtc.x, sOls3,
                                  d = 1,
                                  j = 4,
                                  exx = ols2.exx))
-
 g.ols3.d  <- genGammaTT(subset(dtc, dtc$z2 %in% c(2, 3)),
                         "s.ols3.0.d",
                         "s.ols3.1.d")
@@ -224,7 +206,6 @@ g.ols3.x1 <- genGammaTT(subset(dtc, dtc$z2 %in% c(2, 3)),
 g.ols3.x2 <- genGammaTT(subset(dtc, dtc$z2 %in% c(2, 3)),
                         "s.ols3.0.x2",
                         "s.ols3.1.x2")
-
 ## NOTE: the term for the constants are approximately 0, 1e-16.
 
 ##-------------------------
@@ -241,7 +222,6 @@ dtc$s.tsls.1.d <- unlist(lapply(dtc.z, sTsls,
                                 j = 2,
                                 exz = tsls.exz,
                                 pi  = tsls.pi))
-
 g.tsls <- genGammaTT(dtc, "s.tsls.0.d", "s.tsls.1.d")
 
 ##-------------------------
@@ -250,7 +230,6 @@ g.tsls <- genGammaTT(dtc, "s.tsls.0.d", "s.tsls.1.d")
 
 p.z2.2 <- sum(subset(dtc, dtc$z2 == 2)$f)
 p.z2.3 <- sum(subset(dtc, dtc$z2 == 3)$f)
-
 ## Generate weights
 dtc$s.wald.0.d <- sapply(dtc$z2, sWald,
                          p.to   = p.z2.3,
@@ -262,7 +241,6 @@ dtc$s.wald.1.d <- sapply(dtc$z2, sWald,
                          p.from = p.z2.2,
                          e.to   = ed.z2.3,
                          e.from = ed.z2.2)
-
 g.wald <- genGammaTT(dtc, "s.wald.0.d", "s.wald.1.d")
 
 ##-------------------------
@@ -272,10 +250,8 @@ g.wald <- genGammaTT(dtc, "s.wald.0.d", "s.wald.1.d")
 ## Generalized LATE
 wald.ub <- 0.7
 wald.lb <- 0.2
-
 dtc$w.genlate.1 <- 1 / (wald.ub - wald.lb)
 dtc$w.genlate.0 <- - dtc$w.genlate.1
-
 g.star.genlate <- genGammaTT(dtc,
                              "w.genlate.0",
                              "w.genlate.1",
@@ -310,9 +286,7 @@ test_that("Gamma moments", {
 ##-------------------------
 
 estimates <- c(ols1, ols2, ols3, tsls, wald)
-
 ## Construct A matrix components
-
 A <- rbind(c(g.ols1$g0, g.ols1$g1),
            c(g.ols2$g0, g.ols2$g1),
            c(g.ols3.d$g0, g.ols3.d$g1),
@@ -320,7 +294,6 @@ A <- rbind(c(g.ols1$g0, g.ols1$g1),
            c(g.ols3.x2$g0, g.ols3.x2$g1),
            c(g.tsls$g0, g.tsls$g1),
            c(g.wald$g0, g.wald$g1))
-
 A.extra <- matrix(c(-1, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
                     0, 0, -1, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
                     0, 0, 0, 0, -1, 1, 0, 0, 0, 0, 0, 0, 0, 0,
@@ -330,93 +303,82 @@ A.extra <- matrix(c(-1, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
                     0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, -1, 1),
                   byrow = TRUE,
                   nrow = 7)
-
 ## Construct monotonicity matrix components
-
-grid <- matrix(c(1, 2, 0, 2), nrow = 2, byrow = TRUE)
+grid <- matrix(c(0, 2, 1, 2), nrow = 2, byrow = TRUE)
 grid <- Reduce("rbind",
                lapply(lapply(split(grid, c(1, 2)),
                              FUN = replicate,
                              n = 3,
                              simplify = FALSE),
                       Reduce, f = "rbind"))
-
 grid <- cbind(grid, rep(c(0, 0.5, 1), times = 2))
 rownames(grid) <- NULL
 grid <- data.frame(grid)
-
 colnames(grid) <- c("x1", "x2", "u")
 
-grid <- grid[order(grid[, 3]), ] ## Match the grid ordering of the
-                                 ## function, that way we can check
-                                 ## the matrices defining the LP
-                                 ## problem matches perfectly.
-
-mono0 <- model.matrix(~ x1 + I(x2 * u) + I(x2 * u^2),
+mono0 <- model.matrix(~ x1 + x2:u + x2:I(u^2),
                       data = grid)
-mono1 <- model.matrix(~ x1 + I(x1 * x2) + u + I(x1 * u) + I(x2 * u^2),
+mono1 <- model.matrix(~ x1 + x1:x2 + u + x1:u + x2:I(u^2),
                       data = grid)
-
-monoA0  <- mono0[c(4, 6, 3, 5), ] - mono0[c(2, 4, 1, 3), ]
-monoA1  <- mono1[c(4, 6, 3, 5), ] - mono1[c(2, 4, 1, 3), ]
-
+monoA0 <- mono0[c(2, 3, 5, 6), ] - mono0[c(1, 2, 4, 5), ]
+monoA1 <- mono1[c(2, 3, 5, 6), ] - mono1[c(1, 2, 4, 5), ]
 Azeroes <- matrix(0, ncol = 14, nrow = 4)
-
 m0zeroes <- matrix(0, ncol = 6, nrow = 4)
 m1zeroes <- matrix(0, ncol = 4, nrow = 4)
-
 m0mono  <- cbind(Azeroes, monoA0, m0zeroes)
 m1mono  <- cbind(Azeroes, m1zeroes, monoA1)
 mtemono <- cbind(Azeroes, -monoA0, monoA1)
 
 ## Construct boundedness matrix components
-
 maxy <- max(dtcf$ey)
 miny <- min(dtcf$ey)
-
 Bzeroes <- matrix(0, ncol = 14, nrow = nrow(grid))
 b0zeroes <- matrix(0, ncol = ncol(mono0), nrow = nrow(grid))
 b1zeroes <- matrix(0, ncol = ncol(mono1), nrow = nrow(grid))
-
 m0bound <- cbind(Bzeroes, mono0, b1zeroes)
 m1bound <- cbind(Bzeroes, b0zeroes, mono1)
+mtebound <- cbind(Bzeroes, -mono0, mono1)
 
-## Construct full Gurobi/lpSolveAPI model
+##-------------------------
+## Obtain minimum criteiron
+##-------------------------
+
+## Construct full lpSolveAPI model
 model.o <- list()
 model.o$obj <- c(replicate(14, 1), replicate(10, 0))
 model.o$rhs <- c(estimates,
                  replicate(nrow(m0bound), miny),
                  replicate(nrow(m1bound), miny),
+                 replicate(nrow(mtebound), miny - maxy),
                  replicate(nrow(m0bound), maxy),
                  replicate(nrow(m1bound), maxy),
+                 replicate(nrow(mtebound), maxy - miny),
                  replicate(nrow(m0mono), 0),
                  replicate(nrow(m1mono), 0),
                  replicate(nrow(mtemono), 0))
-
 model.o$sense <- c(replicate(7, "="),
                    replicate(nrow(m0bound), ">="),
                    replicate(nrow(m1bound), ">="),
+                   replicate(nrow(mtebound), ">="),
                    replicate(nrow(m0bound), "<="),
                    replicate(nrow(m1bound), "<="),
+                   replicate(nrow(mtebound), "<="),
                    replicate(nrow(m0mono), ">="),
                    replicate(nrow(m1mono), ">="),
                    replicate(nrow(mtemono), "<="))
-
 model.o$A <- rbind(cbind(A.extra, A),
                    m0bound,
                    m1bound,
+                   mtebound,
                    m0bound,
                    m1bound,
+                   mtebound,
                    m0mono,
                    m1mono,
                    mtemono)
-
 model.o$ub <- c(replicate(14, Inf), replicate(10, Inf))
 model.o$lb <- c(replicate(14, 0), replicate(10, -Inf))
-
 ## Minimize observational equivalence deviation
-## model.o$modelsense <- "min"
-## minobseq <- gurobi::gurobi(model.o)$objbound
 minobseq <- runLpSolveAPI(model.o, 'min')$objval
 
 ##-------------------------
@@ -425,7 +387,6 @@ minobseq <- runLpSolveAPI(model.o, 'min')$objval
 
 tolerance <- 1.01
 A.top <- c(replicate(14, 1), replicate(10, 0))
-
 model.f <- list()
 model.f$obj <- c(replicate(14, 0), g.star.genlate$g0, g.star.genlate$g1)
 model.f$rhs <- c(tolerance * minobseq,
@@ -436,18 +397,9 @@ model.f$A <- rbind(A.top,
                    model.o$A)
 model.f$ub <- c(replicate(14, Inf), replicate(10, Inf))
 model.f$lb <- c(replicate(14, 0), replicate(10, -Inf))
-
 ## Find bounds  with threshold
-
-## Code for Gurobi:
-## model.f$modelsense <- "min"
-## min_genlate <- gurobi::gurobi(model.f)
-## model.f$modelsense <- "max"
-## max_genlate <- gurobi::gurobi(model.f)
-
 min_genlate <- runLpSolveAPI(model.f, 'min')
 max_genlate <- runLpSolveAPI(model.f, 'max')
-
 bound <- c(min_genlate$objval, max_genlate$objval)
 
 ##-------------------------

@@ -28,6 +28,8 @@
 #'     variables. This is required when the target parameter is the
 #'     LATE, and the estimation procedure will condition on these
 #'     variables.
+#' @param env environment, the environment for the original
+#'     propensity score formula.
 #' @return A vector of propensity scores for each observation, as well
 #'     as a `model'. If the user inputs a formula characterizing the
 #'     model for taking up treatment, then the \code{lm}/\code{glm}
@@ -37,6 +39,8 @@
 #'     value of the covariates in the probability model is returned.
 #'
 #' @examples
+#' dtm <- ivmte:::gendistMosquito()
+#'
 #' ## Declaring a probability model.
 #' propensity(formula = d ~ z,
 #'                data = dtm,
@@ -49,35 +53,28 @@
 #'
 #' @export
 propensity <- function(formula, data, link = "logit", late.Z,
-                           late.X) {
-
+                       late.X, env = parent.frame()) {
     formula <- Formula::as.Formula(formula)
-   
+    environment(formula) <- env
+    propVars <- all.vars(formula)
     ## If two-sided formula is provided, estimate propensity score
     ## accordingly
     if (length(formula)[1] == 1 & length(formula)[2] == 1) {
-
         ## obtain design matrix
-        if (link == "linear") prop <-  lm(formula, data)
+        if (link == "linear") prop <-  lm(formula, data, x = FALSE, y = FALSE)
         if (link == "logit")  prop <- glm(formula,
                                           family = binomial(link = "logit"),
-                                          data)
+                                          data, x = FALSE, y = FALSE)
         if (link == "probit") prop <- glm(formula,
                                           family = binomial(link = "probit"),
-                                          data)
-
+                                          data, x = FALSE, y = FALSE)
         phat <- prop$fitted.values
-
         phat[which(phat < 0)] <- 0
         phat[which(phat > 1)] <- 1
-
         return(list(model = prop, phat = phat))
-        
     } else if (length(formula)[1] == 0 & length(formula)[2] == 1) {
-        
         ## If one-sided formula is provided, containing only one
-        ## variable, then that variable is the propensity score
-
+        ## variable, then that variable is the propensity score.
         ## Check that only one variable is submitted. This variable is
         ## the one in the data containing the propensity scores
         if (length(all.vars(formula)) > 1) {
@@ -89,49 +86,16 @@ propensity <- function(formula, data, link = "logit", late.Z,
                       variable on the RHS (where the variable listed is included
                       in the data, and corresponds to propensity scores.")))
         }
-
         pname <- all.vars(formula)
-
-        ## Check that the variable is indeed a proepnsity,
+        ## Check that the variable is indeed a propensity,
         ## i.e. bounded between 0 and 1
         phat <- data[[pname]]
-
         names(phat) <- rownames(data)
-
         if (max(phat) > 1 | min(phat) < 0) {
             stop('Provided propensity scores are not between 0 and 1.')
         }
-
         model <- NULL
-
-        if (hasArg(late.Z)) {
-            ## Generate a matrix of propensity scores corresponding to
-            ## each X and Z---this only works if the X and Z are
-            ## declared for the LATE variables.
-            zIsVec <- substr(deparse(substitute(late.Z)), 1, 2) == "c("
-            if (zIsVec) {
-                late.Z <- restring(substitute(late.Z), substitute = FALSE)
-            } else {
-                late.Z <- deparse(substitute(late.Z))
-            }
-
-            if(hasArg(late.X))  late.X <- restring(substitute(late.X),
-                                                   substitute = FALSE)
-            if(!hasArg(late.X)) late.X <- NULL
-
-            model <- unique(data[, c(late.X, late.Z, pname)])
-
-            ## There should be no duplicate (X, Z)s in the model
-            ## (i.e. for each set of (X, Z), there should only be one
-            ## propensity score)
-            if(max(duplicated(model[, c(late.X, late.Z)]))) {
-                stop(gsub("\\s+", " ",
-                          "Custom propensity score is not well defined: some
-                          (X, Z) values are mapped to more than one
-                          propensity."))
-           }
-        }
-        return(list(model = model, phat = phat))
+        return(list(variable = pname, model = model, phat = phat))
     } else {
         stop(gsub("\\s+", " ",
                   paste0("'formula' argument characterizing the

@@ -4,7 +4,8 @@
 \alias{bound}
 \title{Obtaining TE bounds}
 \usage{
-bound(g0, g1, sset, lpobj, obseq.factor, lpsolver, noisy = FALSE)
+bound(g0, g1, sset, lpobj, obseq.factor, lpsolver, noisy = FALSE,
+  debug = FALSE)
 }
 \arguments{
 \item{g0}{set of expectations for each terms of the MTR for the
@@ -31,6 +32,11 @@ problem.}
 
 \item{noisy}{boolean, set to \code{TRUE} if optimization results
 should be displayed.}
+
+\item{debug}{boolean, indicates whether or not the function should
+provide output when obtaining bounds. The option is only
+applied when \code{lpsolver = 'gurobi'}. The output provided is
+the same as what the Gurobi API would send to the console.}
 }
 \value{
 a list containing the bounds on the treatment effect; the
@@ -43,6 +49,8 @@ a list containing the bounds on the treatment effect; the
 This function estimates the bounds on the target treatment effect.
 }
 \examples{
+dtm <- ivmte:::gendistMosquito()
+
 ## Declare empty list to be updated (in the event multiple IV like
 ## specifications are provided
 sSet <- list()
@@ -82,7 +90,6 @@ ivEstimates <- ivEstimate(formula = ey ~ d | z,
 targetGamma <- genTarget(treat = "d",
                          m0 = ~ 1 + u,
                          m1 = ~ 1 + u,
-                         uname = u,
                          target = "atu",
                          data = dtm,
                          splinesobj = splinesList,

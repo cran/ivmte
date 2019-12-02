@@ -1,7 +1,7 @@
 Package: ivmte
 Title: Instrumental Variables: Extrapolation by Marginal Treatment
         Effects
-Version: 1.0.1
+Version: 1.1.0
 Authors@R: c(person("Alexander",
 		    "Torgovitsky",
 		    email = "atorgovitsky@gmail.com",
@@ -29,21 +29,22 @@ Description: The marginal treatment effect was introduced by Heckman and
     from <https://www.ibm.com/analytics/cplex-optimizer>. CPLEX R APIs 'Rcplex'
     and 'cplexAPI' are available from CRAN. The lp_solve library is freely
     available from <http://lpsolve.sourceforge.net/5.5/>, and is included when
-    installing either of its R APIs, 'lpSolve' or 'lpSolveAPI', which are
+    installing its API 'lpSolveAPI', which is
     available from CRAN.
-Depends: R (>= 3.4.0)
-Imports: polynom (>= 1.3-9), Formula, methods, stats, utils
-Suggests: gurobi (>= 7.5-1), slam (>= 0.1-42), Rcplex (>= 0.3.3),
-        cplexAPI (>= 1.3.3), lpSolve (>= 5.6.13), lpSolveAPI (>=
-        3.4.4), testthat (>= 2.0.0), data.table (>= 1.11.2), splines2
-        (>= 0.2.8), Matrix
+Depends: R (>= 3.6.0)
+Imports: Formula, methods, stats, utils
+Suggests: gurobi (>= 8.1-0), slam (>= 0.1-42), cplexAPI (>= 1.3.3),
+        lpSolveAPI (>= 5.5.2.0-17), testthat (>= 2.0.0), data.table (>=
+        1.12.0), splines2 (>= 0.2.8), Matrix, knitr, rmarkdown, pander,
+        AER
 License: GPL-2 | GPL-3
 Encoding: UTF-8
 LazyData: true
 RoxygenNote: 6.1.1
+VignetteBuilder: knitr
 NeedsCompilation: no
-Packaged: 2019-05-15 22:38:27 UTC; joshua
+Packaged: 2019-11-27 02:37:40 UTC; joshua
 Author: Alexander Torgovitsky [aut],
   Joshua Shea [aut, cre]
 Repository: CRAN
-Date/Publication: 2019-05-16 11:10:11 UTC
+Date/Publication: 2019-12-02 17:40:02 UTC

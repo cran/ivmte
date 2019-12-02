@@ -38,7 +38,6 @@ restring <- function(vector, substitute = TRUE, command = "c") {
         startPoint <- nchar(command) + 2
         endTruncation <- 1
     }
-
     if (substitute == TRUE)  vector <- deparse(substitute(vector))
     if (substitute == FALSE) vector <- deparse(vector)
     vector <- gsub("\\s+", " ", Reduce(paste, vector))
@@ -108,65 +107,55 @@ watu1 <- function(data, expd0, propensity) {
 #' @return The bounds of integration over unobservable \code{u}, as
 #'     well as the multiplier in the weight.
 wlate1 <- function(data, from, to, Z, model, X, eval.X) {
-
-    if (hasArg(X)) data[, X] <- t(replicate(nrow(data), eval.X))
-
-    ## Determine the type of model we are working with (lm vs. glm)
+    if (!hasArg(eval.X)) {
+        fixDataFrom <- data.frame(matrix(from, nrow = 1))
+        fixDataTo   <- data.frame(matrix(to, nrow = 1))
+    } else {
+        fixDataFrom <- data.frame(matrix(c(eval.X, from), nrow = 1))
+        fixDataTo   <- data.frame(matrix(c(eval.X, to), nrow = 1))
+    }
+    ## Determine the type of model we are working with (lm vs. glm),
+    ## and update the to/from values for the LATE
+    pformula <- as.formula(paste("~", model$formula[3]))
     modclass <- class(model)[1]
-
+    pvars <- all.vars(pformula)
+    pxvars <- pvars[!pvars %in% c(X, Z)]
+    if (length(pxvars) > 0) {
+        pxdata <- data.frame(data[, pxvars])
+        fixDataFrom <- cbind(pxdata, fixDataFrom[rep(1, nrow(data)), ])
+        fixDataTo <- cbind(pxdata, fixDataTo[rep(1, nrow(data)), ])
+        colnames(fixDataFrom) <- c(pxvars, X, Z)
+        colnames(fixDataTo) <- c(pxvars, X, Z)
+    } else {
+        fixDataFrom <- data.frame(fixDataFrom[rep(1, nrow(data)), ])
+        fixDataTo <- data.frame(fixDataTo[rep(1, nrow(data)), ])
+        colnames(fixDataFrom) <- c(X, Z)
+        colnames(fixDataTo) <- c(X, Z)
+    }
+    ## Check if propensity model is rank-deficient
+    rankDeficient <- any(is.na(model$coef))
+    if (any(rankDeficient)) {
+        warning(gsub("\\s+", " ",
+                     "Propensity score model is rank-deficient. Propensity
+                      score estimates used to construct the LATE may be
+                      incorrect."), call. = FALSE)
+    }
     ## Predict propensity scores for 'from' case
-    if (length(Z) == 1) {
-        data[, Z] <- replicate(nrow(data), from)
-    } else {
-        data[, Z] <- t(replicate(nrow(data), from))
-    }
     if (modclass ==  "lm") {
-        bfrom <- predict.lm(model, data)
+        bfrom <- suppressWarnings(predict.lm(model, fixDataFrom))
     }
     if (modclass == "glm") {
-        bfrom <- predict.glm(model, data,
-                             type = "response")
+        bfrom <- suppressWarnings(predict.glm(model, fixDataFrom,
+                                              type = "response"))
     }
-    bfrom <- unique(bfrom)
-    if (length(bfrom) > 1) {
-        stop("For LATE target, there should be a single lower bound.")
-    }
-
     ## Predict propensity scores for 'to' case
-    if (length(Z) == 1) {
-        data[, Z] <- replicate(nrow(data), to)
-    } else {
-        data[, Z] <- t(replicate(nrow(data), to))
-    }
     if (modclass ==  "lm") {
-        bto   <- predict.lm(model, data)
+        bto <- suppressWarnings(predict.lm(model, fixDataTo))
     }
     if (modclass == "glm") {
-        bto   <- predict.glm(model, data,
-                           type = "response")
+        bto <- suppressWarnings(predict.glm(model, fixDataTo,
+                                            type = "response"))
     }
-    bto <- unique(bto)
-    if (length(bto) > 1) {
-        stop("For LATE target, there should be a single upper bound.")
-    }
-
-    ## Predict propensity scores using data.frame model
-    if (modclass == "data.frame") {
-        cond_from <- mapply(function(a, b) paste(a, "==", b), Z, from)
-        cond_from <- paste(cond_from, collapse = " & ")
-        cond_to <- mapply(function(a, b) paste(a, "==", b), Z, to)
-        cond_to <- paste(cond_to, collapse = " & ")
-        if (!is.null(X)) {
-            condX <- mapply(function(a, b) paste(a, "==", b), X, eval.X)
-            condX <- paste(condX, collapse = " & ")
-            cond_from <- paste(c(cond_from, condX), collapse = " & ")
-            cond_to   <- paste(c(cond_to, condX), collapse = " & ")
-        }
-        pname <- colnames(model)[(!colnames(model) %in% c(Z, X))]
-        bfrom <- subset(model, eval(parse(text = cond_from)))[, pname]
-        bto   <- subset(model, eval(parse(text = cond_to)))[, pname]
-    }
-
     ## Ensure the bounds are within 0 and 1
     if (length(which(bfrom < 0)) > 0 | length(which(bto < 0)) > 0) {
         warning("Propensity scores below 0 set to 0.", immediate. = TRUE)
@@ -221,9 +210,7 @@ genWeight <- function(fun, fun.name, uname, data) {
     wArgListOth <- wArgList[wArgList != uname]
     wArgListInput <- paste(paste(wArgListOth, "=", data[, wArgListOth]),
                            collapse = ", ")
-
     new_call <- paste0(fun.name, "(", uname, " = u, ", wArgListInput, ")")
-
     outFunction <- function(u) {
         eval(parse(text = new_call))
     }
@@ -275,7 +262,6 @@ genWeight <- function(fun, fun.name, uname, data) {
 #'     \code{TRUE} is returned.
 negationCheck <- function(data, target.knots0, target.knots1,
                           target.weight0, target.weight1, N = 20) {
-
     negation <- TRUE
     ## Check number of knots
     if (length(target.knots0) == length(target.knots1)) {
@@ -288,7 +274,6 @@ negationCheck <- function(data, target.knots0, target.knots1,
                     negation <- FALSE
                     break
                 }
-
                 ## If knots arguments are the same, check
                 ## if knot values are the same
                 if (!setequal(formalArgs(target.knots0[[i]]), "...")) {
@@ -301,21 +286,18 @@ negationCheck <- function(data, target.knots0, target.knots1,
                     kNSample <- sample(x = seq(1, nrow(tdata)),
                                        size = kNCheck,
                                        replace = FALSE)
-
                     kNEval0 <- unlist(
                         lapply(X = split(tdata[kNSample, ],
                                          seq(1, kNCheck)),
                                FUN = funEval,
                                fun = target.knots0[[i]],
                                argnames = wKnotVars))
-
                     kNEval1 <- unlist(
                         lapply(X = split(tdata[kNSample, ],
                                          seq(1, kNCheck)),
                                FUN = funEval,
                                fun = target.knots1[[i]],
                                argnames = wKnotVars))
-
                     if (! all(kNEval0 == kNEval1)) {
                         negation <- FALSE
                         break
@@ -328,14 +310,12 @@ negationCheck <- function(data, target.knots0, target.knots1,
                     }
                 }
             }
-
             ## Check if weight arguments are the same
             if (!setequal(formalArgs(target.weight0[[i]]),
                           formalArgs(target.weight1[[i]]))) {
                 negation <- FALSE
                 break
             }
-
             ## Check if weights are the same
             if (!setequal(formalArgs(target.weight0[[i]]), "...")) {
                 wValVars <- formalArgs(target.weight0[[i]])
@@ -343,26 +323,22 @@ negationCheck <- function(data, target.knots0, target.knots1,
                 if (is.null(dim(tdata))) {
                     tdata <- matrix(tdata, ncol = length(wValVars))
                 }
-
                 kNCheck <- min(20, nrow(tdata))
                 kNSample <- sample(x = seq(1, nrow(tdata)),
                                    size = kNCheck,
                                    replace = FALSE)
-
                 kNEval0 <- unlist(
                     lapply(X = split(tdata[kNSample, ],
                                      seq(1, kNCheck)),
                            FUN = funEval,
                            fun = target.weight0[[i]],
                            argnames = wValVars))
-
                 kNEval1 <- unlist(
                     lapply(X = split(tdata[kNSample, ],
                                      seq(1, kNCheck)),
                            FUN = funEval,
                            fun = target.weight1[[i]],
                            argnames = wValVars))
-
                 if (! all(kNEval0 == -kNEval1)) {
                     negation <- FALSE
                     break

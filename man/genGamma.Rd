@@ -5,14 +5,15 @@
 \title{Estimating expectations of terms in the MTR (gamma objects)}
 \usage{
 genGamma(monomials, lb, ub, multiplier = 1, subset = NULL,
-  means = TRUE)
+  means = TRUE, late.rows = NULL)
 }
 \arguments{
-\item{monomials}{object containing list of list of monomials. Each
-element of the outer list represents an observation in the data
-set, each element in the inner list is a monomial from the
-MTR. The variable is the unobservable u, and the coefficient is
-the evaluation of any interactions with u.}
+\item{monomials}{[UPDATE DESCRIPTION] object containing list of
+list of monomials. Each element of the outer list represents an
+observation in the data set, each element in the inner list is
+a monomial from the MTR. The variable is the unobservable u,
+and the coefficient is the evaluation of any interactions with
+u.}
 
 \item{lb}{vector of lower bounds for the interval of
 integration. Each element corresponds to an observation.}
@@ -21,15 +22,18 @@ integration. Each element corresponds to an observation.}
 integration. Each element corresponds to an observation.}
 
 \item{multiplier}{a vector of the weights that enter into the
-interal. Each element corresponds to an observation.}
+integral. Each element corresponds to an observation.}
 
-\item{subset}{Subset condition used to select observations with
-which to estimate gamma.}
+\item{subset}{The row names/numbers of the subset of observations
+to use.}
 
 \item{means}{logical, if TRUE then function returns the terms of
 E[md]. If FALSE, then function instead returns each term of
 E[md | D, X, Z]. This is useful for testing the code,
 i.e. obtaining population estimates.}
+
+\item{late.rows}{Boolean vector indicating which observations to
+include when conditioning on covariates X.}
 }
 \value{
 If \code{means = TRUE}, then the function returns a vector
@@ -44,6 +48,8 @@ This function generates the gamma objects defined in the paper,
 i.e. each additive term in E[md], where md is a MTR.
 }
 \examples{
+dtm <- ivmte:::gendistMosquito()
+
 ## Declare MTR formula
 formula0 = ~ 1 + u
 

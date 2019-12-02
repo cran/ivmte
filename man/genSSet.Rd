@@ -5,7 +5,8 @@
 \title{Generating LP moments for IV-like estimands}
 \usage{
 genSSet(data, sset, sest, splinesobj, pmodobj, pm0, pm1, ncomponents,
-  scount, subset_index, means = TRUE, yvar, dvar, noisy = TRUE)
+  scount, subset_index, means = TRUE, yvar, dvar, noisy = TRUE,
+  ivn = NULL, redundant = NULL)
 }
 \arguments{
 \item{data}{\code{data.frame} used to estimate the treatment
@@ -53,6 +54,12 @@ treatment effect is point identified.}
 then messages are provided throughout the estimation
 procedure. Set to \code{FALSE} to suppress all messages,
 e.g. when performing the bootstrap.}
+
+\item{ivn}{integer, the number indicating which IV specification
+the component corresponds to.}
+
+\item{redundant}{vector of integers indicating which components in
+the S-set are redundant.}
 }
 \value{
 A list containing the point estimate for the IV regression,
@@ -65,6 +72,8 @@ point estimate, and the corresponding moments (gammas) that will
 enter into the constraint matrix of the LP problem.
 }
 \examples{
+dtm <- ivmte:::gendistMosquito()
+
 ## Declare empty list to be updated (in the event multiple IV like
 ## specifications are provided)
 sSet <- list()

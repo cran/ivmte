@@ -1,20 +1,195 @@
 utils::globalVariables("u")
-
 #' Instrumental Variables: Extrapolation by Marginal Treatment Effects
 #'
-#' This function provides a general framework for using the marginal treatment
-#' effect (MTE) to extrapolate. The model is the same binary treatment
-#' instrumental variable (IV) model considered by
-#' \href{https://doi.org/10.2307/2951620}{Imbens and Angrist (1994)} and
-#' \href{https://doi.org/10.1111/j.1468-0262.2005.00594.x}{Heckman and Vytlacil
-#' (2005)}. The framework on which this function is based was developed by
-#' \href{https://doi.org/10.3982/ECTA15463}{Mogstad, Santos and Torgovitsky
-#' (2018)}. See also the recent survey paper on extrapolation in IV models by
-#' \href{https://doi.org/10.1146/annurev-economics-101617-041813}{Mogstad and
-#' Torgovitsky (2018)}.
+#' This function provides a general framework for using the marginal
+#' treatment effect (MTE) to extrapolate. The model is the same binary
+#' treatment instrumental variable (IV) model considered by
+#' \href{https://doi.org/10.2307/2951620}{Imbens and Angrist (1994)}
+#' and \href{https://doi.org/10.1111/j.1468-0262.2005.00594.x}{Heckman
+#' and Vytlacil (2005)}. The framework on which this function is based
+#' was developed by \href{https://doi.org/10.3982/ECTA15463}{Mogstad,
+#' Santos and Torgovitsky (2018)}. See also the recent survey paper on
+#' extrapolation in IV models by
+#' \href{https://doi.org/10.1146/annurev-economics-101617-041813}{Mogstad
+#' and Torgovitsky (2018)}. A detailed description of the module and
+#' its features can be found in
+#' \href{https://a-torgovitsky.github.io/shea-torgovitsky.pdf}{Shea
+#' and Torgovitsky (2019)}.
 #'
 #' @import methods stats utils
 #'
+#' @param data \code{data.frame} or \code{data.table} used to estimate
+#'     the treatment effects.
+#' @param target character, target parameter to be
+#'     estimated. Currently function allows for ATE (\code{'ate'}),
+#'     ATT (\code{'att'}), ATU (\code{'atu'}), LATE (\code{'late'}),
+#'     and generalized LATE (\code{'genlate'}).
+#' @param late.from a named vector, or a list, declaring the baseline
+#'     set of values of Z used to define the LATE. The name associated
+#'     with each value should be the name of the corresponding
+#'     variable.
+#' @param late.to a named vector, or a list, declaring the comparison
+#'     set of values of Z used to define the LATE. The name associated
+#'     with each value should be the name of the corresponding
+#'     variable.
+#' @param late.X a named vector, or a list, declaring the values at
+#'     which to condition on. The name associated with each value
+#'     should be the name of the corresponding variable.
+#' @param genlate.lb lower bound value of unobservable \code{u} for
+#'     estimating the generalized LATE.
+#' @param genlate.ub upper bound value of unobservable \code{u} for
+#'     estimating the generalized LATE.
+#' @param target.weight0 user-defined weight function for the control
+#'     group defining the target parameter. A list of functions can be
+#'     submitted if the weighting function is in fact a spline. The
+#'     arguments of the function should be variable names in
+#'     \code{data}. If the weight is constant across all observations,
+#'     then the user can instead submit the value of the weight
+#'     instead of a function.
+#' @param target.weight1 user-defined weight function for the treated
+#'     group defining the target parameter. See \code{target.weight0}
+#'     for details.
+#' @param target.knots0 user-defined set of functions defining the
+#'     knots associated with spline weights for the control group. The
+#'     arguments of the function should consist only of variable names
+#'     in \code{data}. If the knots are constant across all
+#'     observations, then the user can instead submit the vector of
+#'     knots instead of a function.
+#' @param target.knots1 user-defined set of functions defining the
+#'     knots associated with spline weights for the treated group. See
+#'     \code{target.knots0} for details.
+#' @param m0 one-sided formula for the marginal treatment response
+#'     function for the control group. Splines may also be
+#'     incorporated using the expression \code{uSpline}, e.g.
+#'     \code{uSpline(degree = 2, knots = c(0.4, 0.8), intercept =
+#'     TRUE)}. The \code{intercept} argument may be omitted, and is
+#'     set to \code{TRUE} by default.
+#' @param m1 one-sided formula for marginal treatment response
+#'     function for treated group. Splines can also be incorporated
+#'     using the expression "uSplines(degree, knots, intercept)". The
+#'     \code{intercept} argument may be omitted, and is set to
+#'     \code{TRUE} by default.
+#' @param uname variable name for the unobservable used in declaring
+#'     the MTRs. The name can be provided with or without quotation
+#'     marks.
+#' @param m1.ub numeric value for upper bound on MTR for the treated
+#'     group. By default, this will be set to the largest value of the
+#'     observed outcome in the estimation sample.
+#' @param m0.ub numeric value for upper bound on MTR for the control
+#'     group. By default, this will be set to the largest value of the
+#'     observed outcome in the estimation sample.
+#' @param m1.lb numeric value for lower bound on MTR for the treated
+#'     group. By default, this will be set to the smallest value of
+#'     the observed outcome in the estimation sample.
+#' @param m0.lb numeric value for lower bound on MTR for the control
+#'     group. By default, this will be set to the smallest value of
+#'     the observed outcome in the estimation sample.
+#' @param mte.ub numeric value for upper bound on treatment effect
+#'     parameter of interest.
+#' @param mte.lb numeric value for lower bound on treatment effect
+#'     parameter of interest.
+#' @param m0.dec logical, set to \code{FALSE} by default. Set equal to
+#'     \code{TRUE} if the MTR for the control group should be weakly
+#'     monotone decreasing.
+#' @param m0.inc logical, set to \code{FALSE} by default. Set equal to
+#'     \code{TRUE} if the MTR for the control group should be weakly
+#'     monotone increasing.
+#' @param m1.dec logical, set to \code{FALSE} by default. Set equal to
+#'     \code{TRUE} if the MTR for the treated group should be weakly
+#'     monotone decreasing.
+#' @param m1.inc logical, set to \code{FALSE} by default. Set equal to
+#'     \code{TRUE} if the MTR for the treated group should be weakly
+#'     monotone increasing.
+#' @param mte.dec logical, set to \code{FALSE} by default. Set equal
+#'     to \code{TRUE} if the MTE should be weakly monotone decreasing.
+#' @param mte.inc logical, set to \code{FALSE} by default. Set equal
+#'     to \code{TRUE} if the MTE should be weakly monotone increasing.
+#' @param ivlike formula or vector of formulas specifying the
+#'     regressions for the IV-like estimands. Which coefficients to
+#'     use to define the constraints determining the treatment effect
+#'     bounds (alternatively, the moments determining the treatment
+#'     effect point estimate) can be selected in the argument
+#'     \code{components}.
+#' @param components a list of vectors of the terms in the regression
+#'     specifications to include in the set of IV-like estimands. No
+#'     terms should be in quotes. To select the intercept term,
+#'     include the name \code{intercept}. If the factorized
+#'     counterpart of a variable is included in the IV-like
+#'     specifications, e.g. \code{factor(x)} where \code{x = 1, 2, 3},
+#'     the user can select the coefficients for specific factors by
+#'     declaring the components \code{factor(x)-1, factor(x)-2,
+#'     factor(x)-3}. See \code{\link{l}} on how to input the
+#'     argument. If no components for a IV specification are given,
+#'     then all coefficients from that IV specification will be used
+#'     to define constraints in the partially identified case, or to
+#'     define moments in the point identified case.
+#' @param subset a single subset condition or list of subset
+#'     conditions corresponding to each regression specified in
+#'     \code{ivlike}. The input must be logical. See \code{\link{l}}
+#'     on how to input the argument. If the user wishes to select
+#'     specific rows, construct a binary variable in the data set, and
+#'     set the condition to use only those observations for which the
+#'     binary variable is 1, e.g. the binary variable is \code{use},
+#'     and the subset condition is \code{use == 1}.
+#' @param propensity formula or variable name corresponding to
+#'     propensity to take up treatment. If a formula is declared, then
+#'     the function estimates the propensity score according to the
+#'     formula and link specified in \code{link}. If a variable name
+#'     is declared, then the corresponding column in the data is taken
+#'     as the vector of propensity scores. A variable name can be
+#'     passed either as a string (e.g \code{propensity = 'p'}). , a
+#'     variable (e.g. \code{propensity = p}), or a one-sided formula
+#'     (e.g. \code{propensity = ~p}.
+#' @param link character, name of link function to estimate propensity
+#'     score. Can be chosen from \code{'linear'}, \code{'probit'}, or
+#'     \code{'logit'}. Default is set to \code{'logit'}.
+#' @param treat variable name for treatment indicator. The name can be
+#'     provided with or without quotation marks.
+#' @param lpsolver character, name of the linear programming package
+#'     in R used to obtain the bounds on the treatment effect. The
+#'     function supports \code{'gurobi'}, \code{'cplexapi'},
+#'     \code{'lpsolveapi'}.
+#' @param criterion.tol tolerance for violation of observational
+#'     equivalence, set to 0 by default. Statistical noise may
+#'     prohibit the theoretical LP problem from being feasible. That
+#'     is, there may not exist a set of coefficients on the MTR that
+#'     are observationally equivalent with regard to the IV-like
+#'     regression coefficients. The function therefore first estimates
+#'     the minimum violation of observational equivalence. This is
+#'     reported in the output under the name 'minimum criterion'. The
+#'     constraints in the LP problem pertaining to observational
+#'     equivalence are then relaxed by the amount \code{minimum
+#'     criterion * (1 + criterion.tol)}. Set \code{criterion.tol} to a
+#'     value greater than 0 to allow for more conservative bounds.
+#' @param initgrid.nx integer determining the number of points of the
+#'     covariates used to form the initial constraint grid for
+#'     imposing shape restrictions on the MTRs.
+#' @param initgrid.nu integer determining the number of evenly spread
+#'     points in the interval [0, 1] of the unobservable \code{u} used
+#'     to form the initial constraint grid for imposing shape
+#'     restrictions on the MTRs.
+#' @param audit.nx integer determining the number of points on the
+#'     covariates space to audit in each iteration of the audit
+#'     procedure.
+#' @param audit.nu integer determining the number of points in the
+#'     interval [0, 1], corresponding to space of unobservable
+#'     \code{u}, to audit in each iteration of the audit procedure.
+#' @param audit.add maximum number of points to add to the initial
+#'     constraint grid for imposing each kind of shape constraint. For
+#'     example, if there are 5 different kinds of shape constraints,
+#'     there can be at most \code{audit.add * 5} additional points
+#'     added to the constraint grid.
+#' @param audit.max maximum number of iterations in the audit
+#'     procedure.
+#' @param point boolean, default set to \code{FALSE}. Set to
+#'     \code{TRUE} if it is believed that the treatment effects are
+#'     point identified. If set to \code{TRUE}, then a two-step GMM
+#'     procedure is implemented to estimate the treatment
+#'     effects. Shape constraints on the MTRs will be ignored under
+#'     point identification.
+#' @param point.eyeweight boolean, default set to \code{FALSE}. Set to
+#'     \code{TRUE} if the GMM point estimate should use the identity
+#'     weighting matrix (i.e. one-step GMM).
 #' @param bootstraps integer, default set to 0.
 #' @param bootstraps.m integer, default set to size of data
 #'     set. Determines the size of the subsample drawn from the
@@ -25,172 +200,71 @@ utils::globalVariables("u")
 #' @param bootstraps.replace boolean, default set to \code{TRUE}. This
 #'     determines whether the resampling procedure used for inference
 #'     will sample with replacement.
-#' @param levels vector, real numbers between 0 and 1. Values
+#' @param levels vector of real numbers between 0 and 1. Values
 #'     correspond to the level of the confidence intervals constructed
 #'     via bootstrap.
-#' @param ci.type character, default set to 'both'. Set to 'forward'
-#'     to construct the forward confidence interval for the treatment
-#'     effect bound. Set to 'backward' to construct the backward
-#'     confidence interval for the treatment effect bound. Set to
-#'     'both' to construct both types of confidence intervals.
-#' @param pvalue.tol numeric, default set to 1e-08. Tolerance level
-#'     for determining p-value of treatment effect bound.
-#' @param ivlike formula or vector of formulas used to specify the
-#'     regressions for the IV-like estimands.
-#' @param data \code{data.frame} used to estimate the treatment
-#'     effects.
-#' @param subset single subset condition or list of subset conditions
-#'     corresponding to each IV-like estimand. The input must be
-#'     logical. See \code{\link{l}} on how to input the argument. If
-#'     the user wishes to select specific rows, construct a binary
-#'     variable in the data set, and set the condition to use only
-#'     those observations for which the binary variable is 1, e.g. the
-#'     binary variable is \code{use}, and the subset condition is
-#'     \code{use == 1}.
-#' @param components a list of vectors of the terms/components from
-#'     the regressions specifications we want to include in the set of
-#'     IV-like estimands. To select the intercept term, include in the
-#'     vector of variable names, `intercept'. If the the factorized
-#'     counterpart of a variable \code{x = 1, 2, 3} is included in the
-#'     IV-like specifications via \code{factor(x)}, the user can
-#'     select the coefficients for specific factors by declaring the
-#'     components \code{factor(x)-1, factor(x)-2, factor(x)-3}. See
-#'     \code{\link{l}} on how to input the argument. If no components
-#'     for a IV specification are given, then all components from that
-#'     IV specification will be included.
-#' @param propensity formula or variable name corresponding to
-#'     propensity to take up treatment. If a formula is declared, then
-#'     the function estimates propensity score according to the
-#'     formula and link specified. If a variable name is declared,
-#'     then the corresponding column in the data is taken as the
-#'     vector of propensity scores.
-#' @param link name of link function to estimate propensity score. Can
-#'     be chosen from \code{linear}, \code{probit}, or
-#'     \code{logit}. Default is set to "logit".
-#' @param treat variable name for treatment indicator
-#' @param m0 one-sided formula for marginal treatment response
-#'     function for control group. Splines can also be incorporated
-#'     using the expression "uSplines(degree, knots, intercept)". The
-#'     'intercept' argument may be omitted, and is set to \code{TRUE}
-#'     by default.
-#' @param m1 one-sided formula for marginal treatment response
-#'     function for treated group. Splines can also be incorporated
-#'     using the expression "uSplines(degree, knots, intercept)". The
-#'     'intercept' argument may be omitted, and is set to \code{TRUE}
-#'     by default.
-#' @param uname variable name for unobservable used in declaring MTRs.
-#' @param target target parameter to be estimated. Currently function
-#'     allows for ATE ("\code{ate}"), ATT ("\code{att}"), ATU
-#'     ("\code{atu}"), LATE ("\code{late}"), and generalized LATE
-#'     ("\code{genlate}").
-#' @param target.weight0 user-defined weight function for the control
-#'     group defining the target parameter. A list of functions can be
-#'     submitted if the weighting function is in fact a spline. The
-#'     arguments of the function should be variable names in
-#'     \code{data}. If the weight is constant across all observations,
-#'     then the user can instead submit the value of the weight
-#'     instead of a function.
-#' @param target.weight1 user-defined weight function for the treated
-#'     group defining the target parameter. A list of functions can be
-#'     submitted if the weighting function is in fact a spline. The
-#'     arguments of the function should be variable names in
-#'     \code{data}. If the weight is constant across all observations,
-#'     then the user can instead submit the value of the weight
-#'     instead of a function.
-#' @param target.knots0 user-defined set of functions defining the
-#'     knots associated with splines weights for the control
-#'     group. The arguments of the function should consist only of
-#'     variable names in \code{data}. If the knots are constant across
-#'     all observations, then the user can instead submit the vector
-#'     of knots instead of a function.
-#' @param target.knots1 user-defined set of functions defining the
-#'     knots associated with splines weights for the treated
-#'     group. The arguments of the function should be variable names
-#'     in \code{data}. If the knots are constant across all
-#'     observations, then the user can instead submit the vector of
-#'     knots instead of a function.
-#' @param late.Z vector of variable names used to define the LATE.
-#' @param late.from baseline set of values of Z used to define the
-#'     LATE.
-#' @param late.to comparison set of values of Z used to define the
-#'     LATE.
-#' @param late.X vector of variable names of covariates which we
-#'     condition on when defining the LATE.
-#' @param eval.X numeric vector of the values at which we condition
-#'     variables in \code{late.X} on when estimating the LATE.
-#' @param genlate.lb lower bound value of unobservable u for
-#'     estimating generalized LATE.
-#' @param genlate.ub upper bound value of unobservable u for
-#'     estimating generalized LATE.
-#' @param obseq.tol threshold for violation of observational
-#'     equivalence. The threshold enters in multiplicatively. Thus, a
-#'     value of 0 corresponds to no violation of observational
-#'     equivalence other than statistical noise, and the assumption
-#'     that the model is correctly specified.
-#' @param grid.nu number of evenly spread points in the interval [0,
-#'     1] of the unobservable u used to form the grid for imposing
-#'     shape restrictions on the MTRs.
-#' @param grid.nx number of evenly spread points of the covariates to
-#'     use to form the grid for imposing shape restrictions on the
-#'     MTRs.
-#' @param audit.nx number of points on the covariates space to audit
-#'     in each iteration of the audit procedure.
-#' @param audit.nu number of points in the interval [0, 1],
-#'     corresponding to the normalized value of the unobservable term,
-#'     to audit in each iteration of the audit procedure.
-#' @param audit.max maximum number of iterations in the audit
-#'     procedure.
-#' @param audit.tol tolerance for determining when to end the audit
-#'     procedure.
-#' @param m1.ub numeric value for upper bound on MTR for treated
-#'     group. By default, this will be set to the largest value of the
-#'     observed outcome in the estimation sample.
-#' @param m0.ub numeric value for upper bound on MTR for control
-#'     group. By default, this will be set to the largest value of the
-#'     observed outcome in the estimation sample.
-#' @param m1.lb numeric value for lower bound on MTR for treated
-#'     group. By default, this will be set to the smallest value of
-#'     the observed outcome in the estimation sample.
-#' @param m0.lb numeric value for lower bound on MTR for control
-#'     group. By default, this will be set to the smallest value of
-#'     the observed outcome in the estimation sample.
-#' @param mte.ub numeric value for upper bound on treatment effect
-#'     paramter of interest.
-#' @param mte.lb numeric value for lower bound on treatment effect
-#'     paramter of interest.
-#' @param m0.dec logical, equal to TRUE if we want MTR for control
-#'     group to be weakly monotone decreasing.
-#' @param m0.inc logical, equal to TRUE if we want MTR for control
-#'     group to be weakly monotone increasing.
-#' @param m1.dec logical, equal to TRUE if we want MTR for treated
-#'     group to be weakly monotone decreasing.
-#' @param m1.inc logical, equal to TRUE if we want MTR for treated
-#'     group to be weakly monotone increasing.
-#' @param mte.dec logical, equal to TRUE if we want the MTE to be
-#'     weakly monotone decreasing.
-#' @param mte.inc logical, equal to TRUE if we want the MTE to be
-#'     weakly monotone decreasing.
-#' @param lpsolver name of the linear programming package in R used to
-#'     obtain the bounds on the treatment effect.
-#' @param point boolean, default set to \code{FALSE}. Set to
-#'     \code{TRUE} if it is believed that the treatment effects are
-#'     point identified. If set to \code{TRUE}, then a two-step GMM
-#'     procedure is implemented to estimate the treatment
-#'     effects. Shape constraints on the MTRs will be ignored under
-#'     point identification.
+#' @param ci.type character, default set to \code{'both'}. Set to
+#'     \code{'forward'} to construct the forward confidence interval
+#'     for the treatment effect bound. Set to \code{'backward'} to
+#'     construct the backward confidence interval for the treatment
+#'     effect bound. Set to \code{'both'} to construct both types of
+#'     confidence intervals.
+#' @param specification.test boolean, default set to
+#'     \code{TRUE}. Function performs a specificaiton test for the
+#'     partially identified case when \code{bootstraps > 0}.
 #' @param noisy boolean, default set to \code{TRUE}. If \code{TRUE},
 #'     then messages are provided throughout the estimation
 #'     procedure. Set to \code{FALSE} to suppress all messages,
 #'     e.g. when performing the bootstrap.
+#' @param smallreturnlist boolean, default set to \code{FALSE}. Set to
+#'     \code{TRUE} to exclude large intermediary components
+#'     (i.e. propensity score model, LP model, bootstrap iterations)
+#'     from being included in the return list.
 #' @param seed integer, the seed that determines the random grid in
 #'     the audit procedure.
+#' @param debug boolean, indicates whether or not the function should
+#'     provide output when obtaining bounds. The option is only
+#'     applied when \code{lpsolver = 'gurobi'}. The output provided is
+#'     the same as what the Gurobi API would send to the console.
 #' @return Returns a list of results from throughout the estimation
 #'     procedure. This includes all IV-like estimands; the propensity
 #'     score model; bounds on the treatment effect; the estimated
 #'     expectations of each term in the MTRs; the components and
 #'     results of the LP problem.
 #'
+#' @details The return list includes the following objects.
+#'     \describe{
+#' \item{sset}{a list of all the coefficient estimates and weights
+#'     corresponding to each element in the S-set.}
+#' \item{gstar}{a list containing the estimate of the weighted means
+#' for each component in the MTRs. The weights are determined by the
+#' target parameter declared in \code{target}, or the weights defined
+#' by \code{target.weight1}, \code{target.knots1},
+#' \code{target.weight0}, \code{target.knots0}.}
+#' \item{gstar.weights}{a list containing the target weights used to
+#' estimate \code{gstar}.}
+#' \item{gstar.coef}{a list containing the coefficients on the treated
+#' and control group MTRs.}
+#' \item{propensity}{the propensity score model. If a variable is fed
+#' to the \code{propensity} argument when calling \code{ivmte}, then
+#' the returned object is a list containing the name of variable given by the
+#' user, and the values of that variable used in estimation.}
+#' \item{bounds}{a vector with the estimated lower and upper bounds of
+#' the target treatment effect.}
+#' \item{lpresult}{a list containing the LP model, and the full output
+#' from solving the LP problem.}
+#' \item{audit.grid}{the audit grid on which all shape constraints
+#' were satisfied.}
+#' \item{audit.count}{the number of audits required until there were
+#' no more violations.}
+#' \item{audit.criterion}{the minimum criterion.}
+#' \item{splinesdict}{a list including the specifications of each
+#' spline declared in each MTR.}
+#' }
+#'
 #' @examples
+#' dtm <- ivmte:::gendistMosquito()
+#'
 #' ivlikespecs <- c(ey ~ d | z,
 #'                  ey ~ d | factor(z),
 #'                  ey ~ d,
@@ -213,91 +287,144 @@ utils::globalVariables("u")
 #'       lpsolver = "lpSolveAPI")
 #'
 #' @export
-ivmte <- function(bootstraps = 0, bootstraps.m,
+ivmte <- function(data, target, late.from, late.to, late.X,
+                  genlate.lb, genlate.ub, target.weight0 = NULL,
+                  target.weight1 = NULL, target.knots0 = NULL,
+                  target.knots1 = NULL, m0, m1, uname = u, m1.ub,
+                  m0.ub, m1.lb, m0.lb, mte.ub, mte.lb, m0.dec, m0.inc,
+                  m1.dec, m1.inc, mte.dec, mte.inc, ivlike,
+                  components, subset, propensity, link = 'logit',
+                  treat, lpsolver = NULL, criterion.tol = 0,
+                  initgrid.nx = 20, initgrid.nu = 20, audit.nx = 2500,
+                  audit.nu = 25, audit.add = 100, audit.max = 25,
+                  point = FALSE, point.eyeweight = FALSE,
+                  bootstraps = 0, bootstraps.m,
                   bootstraps.replace = TRUE,
-                  levels = c(0.99, 0.95, 0.90), ci.type = 'both',
-                  pvalue.tol = 1e-08, ivlike, data, subset,
-                  components, propensity, link = "logit", treat, m0,
-                  m1, uname = u, target, target.weight0 = NULL,
-                  target.weight1, target.knots0, target.knots1 = NULL,
-                  late.Z, late.from, late.to, late.X, eval.X,
-                  genlate.lb, genlate.ub, obseq.tol = 0.05,
-                  grid.nu = 20, grid.nx = 20, audit.nx = 20,
-                  audit.nu = 20, audit.max = 10, audit.tol = 1e-08,
-                  m1.ub, m0.ub, m1.lb, m0.lb, mte.ub, mte.lb, m0.dec,
-                  m0.inc, m1.dec, m1.inc, mte.dec, mte.inc,
-                  lpsolver = NULL, point = FALSE, noisy = TRUE,
-                  seed = 12345) {
-
-    ## Include into Roxygen documentation once document is published..
-    ## A detailed description of the module and its features
-    ## can be found in
-    ## \href{https://a-torgovitsky.github.io/shea-torgovitsky.pdf}{Shea and
-    ## Torgovitsky (2019)}.
-    
+                  levels = c(0.99, 0.95, 0.90), ci.type = 'backward',
+                  specification.test = TRUE,
+                  noisy = TRUE,
+                  smallreturnlist = FALSE, seed = 12345, debug = FALSE) {
     call <- match.call(expand.dots = FALSE)
+    envList <- list(m0 = environment(m0),
+                    m1 = environment(m1),
+                    ivlike = environment(ivlike),
+                    parent = parent.frame())
+    envProp <- try(environment(propensity), silent = TRUE)
+    if (class(envProp) != "environment") {
+        envList$propensity <- parent.frame()
+    } else {
+        envList$propensity <- envProp
+    }
+    for (i in 1:length(envList)) {
+        if (is.null(envList[[i]])) envList[[i]] <- parent.frame()
+    }
 
     ##---------------------------
     ## 1. Check linear programming dependencies
     ##---------------------------
-
     if (hasArg(lpsolver)) lpsolver <- tolower(lpsolver)
-
     if (is.null(lpsolver)) {
         if (requireNamespace("gurobi", quietly = TRUE)) {
             lpsolver <- "gurobi"
-        } else if (requireNamespace("Rcplex", quietly = TRUE)) {
-            lpsolver <- "Rcplex"
+        } else if (requireNamespace("lpSolveAPI", quietly = TRUE)) {
+            lpsolver <- "lpSolveAPI"
         } else if (requireNamespace("cplexAPI", quietly = TRUE)) {
             lpsolver <- "cplexAPI"
-        } else if (requireNamespace("lpSolve", quietly = TRUE)) {
-            lpsolver <- "lpSolve"
         } else {
             stop(gsub("\\s+", " ",
                       "Please install one of the following packages required for
                       estimation:
                       gurobi (version 7.5-1 or later);
-                      Rcplex (version 0.3.3 or later);
                       cplexAPI (version 1.3.3 or later);
-                      lpSolve (version 5.6.13 or later)."))
+                      lpSolveAPI (version 5.5.2.0 or later)."),
+                 call. = FALSE)
         }
     } else {
         if (! lpsolver %in% c("gurobi",
-                              "rcplex",
                               "cplexapi",
-                              "lpsolve",
                               "lpsolveapi")) {
             stop(gsub("\\s+", " ",
                       paste0("Estimator is incompatible with linear programming
                              package '", lpsolver, "'. Please install one of the
                              following linear programming packages instead:
                              gurobi (version 7.5-1 or later);
-                             Rcplex (version 0.3.3 or later);
                              cplexAPI (version 1.3.3 or later);
-                             lpSolve (version 5.6.13 or later).")))
+                             lpSolveAPI (version 5.5.2.0 or later).")),
+                 call. = FALSE)
+        }
+    }
+    if (debug) {
+        if (lpsolver != "gurobi") {
+            lpsolver <- "gurobi"
+            warning(gsub("\\s+", " ",
+                         "'debug = TRUE' is only permitted if
+                          'lpsolver = \"gurobi\"'.
+                           Linear programming output below is generated
+                           by Gurobi."),
+                    call. = FALSE, immediate. = TRUE)
+        }
+        if (!requireNamespace("gurobi", quietly = TRUE)) {
+            stop(gsub("\\s+", " ",
+                      "'debug = TRUE' is only permitted if
+                       'lpsolver = \"gurobi\"'."))
         }
     }
 
     ##---------------------------
     ## 2. Check format of non-numeric arguments
     ##---------------------------
-
+    ## Convert uname into a string
+    uname <- deparse(substitute(uname))
+    uname <- gsub("~", "", uname)
+    uname <- gsub("\\\"", "", uname)
+    ## Ensure data can be converted to a data.frame
+    if (("data.frame" %in% class(data)) |
+        ("matrix" %in% class(data))) {
+        data <- as.data.frame(data)
+    } else  {
+        stop(gsub("\\s+", " ",
+                  "'data' argument must either be a data.frame,
+                   data.table, tibble, or matrix."),
+             call. = FALSE)
+    }
+    ## Ensure MTRs are formulas
+    if (classFormula(m0) && classFormula(m1)) {
+        if (all(length(Formula::as.Formula(m0)) == c(0, 1)) &&
+            all(length(Formula::as.Formula(m1)) == c(0, 1))) {
+            mtrFail <- FALSE
+        } else {
+            mtrFail <- TRUE
+        }
+    } else {
+        mtrFail <- TRUE
+    }
+    if (mtrFail) {
+        stop(gsub("\\s+", " ",
+                  "Arguments 'm0' and 'm1' must be one-sided formulas,
+                   e.g. m0 = ~ 1 + u + x:I(u ^ 2)."),
+             call. = FALSE)
+    }
     ## Character arguments will be converted to lowercase
     if (hasArg(target))   target   <- tolower(target)
     if (hasArg(link))     link     <- tolower(link)
     if (hasArg(ci.type))  ci.type  <- tolower(ci.type)
-
     ## Convert ivlike formula into a list (i.e. a one-element list
     ## with one formula), which is a more robust framework
     if (classFormula(ivlike)) {
         ivlike <- c(ivlike)
     }
-
     ## Convert formula, components, and subset inputs into lists
     length_formula <- length(ivlike)
-
     userComponents <- FALSE
     if (hasArg(components)) {
+        tmpComp <- deparse(substitute(components))
+        if (substr(tmpComp, 1, 2) != "l(" &&
+            substr(tmpComp, 1, 2) == "c(") {
+            stop(gsub("\\s+", " ",
+                      "The 'components' argument should be declared
+                       using 'l()' instead of 'c()'."),
+                 call. = FALSE)
+        }
         if (!is.null(components)) {
             if (length(components) > 1) {
                 userComponents <- TRUE
@@ -309,7 +436,6 @@ ivmte <- function(bootstraps = 0, bootstraps.m,
             }
         }
     }
-
     if (userComponents) {
         length_components <- length(components)
         if (length_formula == 1) {
@@ -325,12 +451,15 @@ ivmte <- function(bootstraps = 0, bootstraps.m,
             if (substr(componentsTmp, 1, 2) == "l(") {
                 components <- deparse(substitute(components))
                 components <- gsub("\\s+", " ", Reduce(paste, components))
-
                 if (substr(componentsTmp, 1, 4) != "l(c(") {
-                    components <- paste0("l(c",
-                                         substr(components, 2,
-                                                nchar(components)),
-                                         ")")
+                    internals <- substr(components, 3,
+                                        nchar(components) - 1)
+                    charList <- unique(unlist(strsplit(x = internals,
+                                                       split = "")))
+                    if (length(charList) == 2 && all(charList == c(",", " "))) {
+                        internals <- ""
+                    }
+                    components <- paste0("l(c(", internals, "))")
                 }
                 components <- eval(parse(text = components))
                 length_components <- 1
@@ -348,13 +477,7 @@ ivmte <- function(bootstraps = 0, bootstraps.m,
     } else {
         length_components <- length_formula
         components <- as.list(replicate(length_formula, ""))
-        warning(gsub("\\s+", " ",
-                     "No list of components provided. All covariates in each
-                         IV-like specification will be included when
-                         constructing each S-set."),
-                call. = FALSE)
     }
-
     if (length_formula > length_components & length_components > 0) {
         warning(gsub("\\s+", " ",
                      "List of components not the same length of list of
@@ -365,7 +488,6 @@ ivmte <- function(bootstraps = 0, bootstraps.m,
                 call. = FALSE)
         components[(length(components) + 1) : length(ivlike)] <- ""
     }
-
     if (length_formula < length_components) {
         warning(gsub("\\s+", " ",
                      "List of components not the same length of list of
@@ -375,22 +497,80 @@ ivmte <- function(bootstraps = 0, bootstraps.m,
                 call. = FALSE)
         components <- components[1 : length(ivlike)]
     }
-
     ## Check the subset input---of the three lists that are input,
     ## only this can be omitted by the user, in which case no
     ## subsetting is used
     if (hasArg(subset)) {
-
         ## If subsetting is not a list, convert it to a list
         if (!(classList(subset))) {
-            subset <- paste0("l(",
-                             gsub("\\s+", " ",
-                                  Reduce(paste, deparse(substitute(subset)))),
-                             ")")
-            subset <- eval(parse(text = subset))
-
+            ## Check if character, if so, then may need to
+            ## deparse. Also check if logical, in which case less
+            ## needs to be done.
+            subsetChar <- suppressWarnings(
+                try(is.character(subset), silent = TRUE))
+            subsetLogic <- suppressWarnings(
+                try(is.logical(subset), silent = TRUE))
+            if (subsetChar == TRUE) {
+                stop(gsub("\\s+", " ",
+                          "Subset conditions should be logical
+                           expressions involving variable names from the
+                           data set and logical operators."),
+                     call. = FALSE)
+            } else if (subsetLogic == TRUE) {
+                ## Currently prohobit logical vectors. Instead
+                ## restrict to expressions only. Below is the code to
+                ## revert to the case where logical vectors are
+                ## allowed.
+                ## subsetList <- list()
+                ## subsetList[[1]] <- subset
+                ## subset <- subsetList
+                stop(gsub("\\s+", " ",
+                          "Subset conditions should be logical
+                           expressions involving variable names from the
+                           data set and logical operators. Make sure the name of
+                           the variable is not the same as that of another
+                           object in the workspace. If so, rename the object
+                           in the workspace, or the variable in the data set."),
+                     call. = FALSE)
+            } else {
+                subsetStrSubs <- Reduce(paste, deparse(substitute(subset)))
+                subsetStr <- suppressWarnings(
+                    try(Reduce(paste, deparse(subset)), silent = TRUE))
+                if (class(subsetStr) == "try-error") { ## i.e. logical
+                    subset <- paste0("l(", subsetStrSubs, ")")
+                } else { ## i.e. variable, for looping
+                    subset <- paste0("l(", subsetStr, ")")
+                }
+            }
+            if (subsetLogic != TRUE) {
+                subsetLogicOp <- 0
+                for (operator in c("==", "<", ">", "%in%")) {
+                    subsetLogicOp <- subsetLogicOp + grepl(operator, subset)
+                }
+                if (subsetLogicOp == 0) {
+                    stop(gsub("\\s+", " ",
+                              "Subset conditions should be logical
+                           expressions involving variable names from the
+                           data set and logical operators."),
+                         call. = FALSE)
+                }
+                subset <- eval(parse(text = subset))
+            }
         }
-
+        ## Fill in any missing subset slots
+        if (length(subset) > 1 && length(subset) != length_formula) {
+            stop(gsub("\\s+", " ",
+                      "Number of subset conditions not equal to number of
+                       IV specifications. Either declare a single subset
+                       condition to be applied to all IV specifications; or
+                       declare a list of subset conditions, one for each IV
+                       specificaiton. An empty element in the list of subset
+                       conditions corresponds to using the full sample."),
+                 call. = FALSE)
+        }
+        if (length(subset) == 1 && length_formula > 1) {
+            subset <- rep(subset, length_formula)
+        }
         ## Check if all subseting conditions are logical
         nonLogicSubset <- NULL
         for (i in 1:length(ivlike)) {
@@ -399,7 +579,6 @@ ivmte <- function(bootstraps = 0, bootstraps.m,
             } else {
                 ssubset <- subset[[i]]
             }
-
             if (!is.logical(head(eval(substitute(ssubset), data)))) {
                 nonLogicSubset <- c(nonLogicSubset, i)
             }
@@ -411,9 +590,9 @@ ivmte <- function(bootstraps = 0, bootstraps.m,
                       logical: ",
                       paste(nonLogicSubset, collapse = ", "),
                       ". Please change the conditions so they
-                      are logical.")))
+                      are logical.")),
+                 call. = FALSE)
         }
-
         if(length(subset) < length_formula) {
             warning(gsub("\\s+", " ",
                          "List of subset conditions not the same length
@@ -442,34 +621,31 @@ ivmte <- function(bootstraps = 0, bootstraps.m,
     ##---------------------------
     ## 3. Check numeric arguments and case completion
     ##---------------------------
-
     ## Variable and weight checks
     if (hasArg(treat)) {
-        if (! deparse(substitute(treat)) %in% colnames(data)) {
-            stop("Declared treatment indicator not found in data")
+        treatStr <- deparse(substitute(treat))
+        treatStr <- gsub("~", "", treatStr)
+        treatStr <- gsub("\\\"", "", treatStr)
+        if (! treatStr %in% colnames(data)) {
+            stop("Declared treatment indicator not found in data",
+                 call. = FALSE)
         }
     }
     if (hasArg(target)) {
         if (! target %in% c("ate", "att", "atu", "late", "genlate")) {
             stop(gsub("\\s+", " ",
                       "Specified target parameter is not recognized.
-                      Choose from 'ate', 'att', 'atu', 'late', or 'genlate'."))
+                      Choose from 'ate', 'att', 'atu', 'late', or 'genlate'."),
+                 call. = FALSE)
         }
         if (target == "late") {
-            if (!(hasArg(late.Z) & hasArg(late.to) & hasArg(late.from))) {
-                stop(gsub("\\s+", " ",
-                          "Target paramter of 'late' requires arguments
-                          'late.Z', 'late.to', and 'late.from'."))
-            }
-            if ((hasArg(late.X) & !hasArg(eval.X)) |
-               !hasArg(late.X) & hasArg(eval.X)) {
-                stop(gsub("\\s+", " ",
-                          "If the target parameter is 'late', then either both
-                          late.X and eval.X are specified, or neither are
-                          specified."))
-            }
-
             ## Check the LATE arguments are declared properly.
+            if (!(hasArg(late.to) & hasArg(late.from))) {
+                stop(gsub("\\s+", " ",
+                          "Target paramter 'late' requires arguments
+                          'late.to', and 'late.from'."),
+                     call. = FALSE)
+            }
             if (classList(late.to)) late.to <- unlist(late.to)
             if (classList(late.from)) late.from <- unlist(late.from)
             zIsVec <- substr(deparse(substitute(late.Z)), 1, 2) == "c("
@@ -482,56 +658,59 @@ ivmte <- function(bootstraps = 0, bootstraps.m,
             } else {
                 late.Z <- deparse(substitute(late.Z))
             }
-
+            late.Z = sort(names(late.from))
+            late.Ztmp = sort(names(late.to))
             if (length(late.to) != length(late.from) |
                 length(late.to) != length(late.Z)) {
                 stop(gsub("\\s+", " ",
-                          "The number of variables declared in 'late.Z'
-                           must be equal to the length of the vectors
-                           declared in 'late.to' and 'late.from'."))
+                          "The number of variables/values declared in 'late.to'
+                           and 'late.from' must be equal."),
+                     call. = FALSE)
+            }
+            if (!all(late.Z == late.Ztmp)) {
+                stop(gsub("\\s+", " ",
+                          "The variables declared in 'late.to' and 'late.from'
+                           must be the same."),
+                     call. = FALSE)
+            }
+            if (length(unique(late.Z)) != length(late.Z)) {
+                stop(gsub("\\s+", " ",
+                          "Each variable in 'late.to' and 'late.from' can only
+                           be assigned one value."),
+                     call. = FALSE)
             }
             if (!is.numeric(late.to) | !is.numeric(late.from)) {
-                stop("Vectors 'late.from' and 'late.to' must be numeric.")
+                stop("Vectors 'late.from' and 'late.to' must be numeric.",
+                     call. = FALSE)
             }
+            late.from <- late.from[late.Z]
+            late.to <- late.to[late.Z]
             if (all(late.to == late.from)) {
                 stop(gsub("\\s+", " ",
-                          "'late.to' must be different from 'late.from'."))
-            }
-
-            ## Check that included insturments are declared properly
-            if (hasArg(eval.X)) {
-                if (classList(eval.X)) eval.X <- unlist(eval.X)
-                xIsVec <- substr(deparse(substitute(late.X)), 1, 2) == "c("
-                xIsList <- substring(deparse(substitute(late.X)), 1, 2) == "l("
-                if (xIsVec) {
-                    late.X <- restring(substitute(late.X),
-                                         substitute = FALSE)
-                } else if (xIsList) {
-                    late.X <- restring(substitute(late.X),
-                                         substitute = FALSE,
-                                         command = "l")
-                } else {
-                    late.X <- deparse(substitute(late.X))
-                }
-                if (length(late.X) != length(eval.X)) {
-                    stop(gsub("\\s+", " ",
-                              "The number of variables declared in 'late.X'
-                       must be equal to the length of the vector
-                       declared in 'eval.X'."))
-                }
-                if (!is.numeric(eval.X)) {
-                    stop("Vector 'eval.X' must be numeric.")
-                }
+                          "'late.to' must be different from 'late.from'."),
+                     call. = FALSE)
             }
         }
         if (target == "genlate") {
             if (genlate.lb < 0 | genlate.ub > 1) {
                 stop(gsub("\\s+", " ",
                           "'genlate.lb' and 'genlate.ub' must be between 0
-                          and 1."))
+                          and 1."), call. = FALSE)
             }
             if (genlate.lb >= genlate.ub) {
-                stop("'genlate.lb' must be strictly less than 'genlate.ub'.")
+                stop("'genlate.lb' must be strictly less than 'genlate.ub'.",
+                     call. = FALSE)
+            }
+        }
+        if (target == "late" | target == "genlate") {
+            ## Check that included insturments are declared properly
+            if (hasArg(late.X)) {
+                eval.X <- unlist(late.X)
+                late.X <- names(late.X)
+                if (!is.numeric(eval.X)) {
+                    stop("Vector 'eval.X' must be numeric.",
+                         call. = FALSE)
+                }
             }
         }
         if (target != "genlate" &
@@ -540,39 +719,40 @@ ivmte <- function(bootstraps = 0, bootstraps.m,
                          "Unless target parameter is 'genlate', 'genlate.lb' and
                          'genlate.ub' arguments will not be used."))
         }
-        if (target != "late" & (hasArg("eval.X") | hasArg("late.X"))) {
+        if ((target != "late"  & target != "genlate") &
+            (hasArg("eval.X") | hasArg("late.X"))) {
             warning(gsub("\\s+", " ",
-                         "Unless target parameter is 'late', 'eval.X' and
-                         'late.X' arguments will not be used."))
+                         "Unless target parameter is 'late' or
+                          'genlate', the arguments eval.X' and
+                          'late.X' will not be used."))
         }
         if ((hasArg(target.weight0) | hasArg(target.weight1))) {
             stop(gsub("\\s+", " ",
                       "A preset target weight is chosen, and a custom target
                       weight is provided. Please provide an input for 'target'
-                      only, or for 'target.weight0' and 'target.weight1'."))
+                      only, or for 'target.weight0' and 'target.weight1'."),
+                 call. = FALSE)
         }
         target.weight0 <- NULL
         target.weight1 <- NULL
-    } else {       
+    } else {
         if (!(hasArg(target.weight0) & hasArg(target.weight1))) {
             stop(gsub("\\s+", " ",
                       "Only one target weight function is provided. If a custom
                       target weight is to be used, inputs for both
-                      target.weight0 and target.weight1 must be provided."))
+                      target.weight0 and target.weight1 must be provided."),
+                 call. = FALSE)
         }
-
         ## Convert all entries into lists
         target.weight0 <- c(target.weight0)
         target.weight1 <- c(target.weight1)
         target.knots0  <- c(target.knots0)
         target.knots1  <- c(target.knots1)
-
         ## Weight check
         weightCheck1 <- unlist(lapply(target.weight0, is.function))
         weightCheck2 <- unlist(lapply(target.weight0, function(x)
             is.numeric(x) * (length(x) == 1)))
         fails0 <- which(weightCheck1 + weightCheck2 == 0)
-
         if (length(fails0) > 0) {
             stop(gsub("\\s+", " ",
                       paste0("Each component of the custom weight
@@ -580,14 +760,12 @@ ivmte <- function(bootstraps = 0, bootstraps.m,
                              must either be functions or constants. The
                              following entries of target.weight0 are neither: ",
                              paste(fails0, collapse = ", "),
-                             ".")))
+                             ".")), call. = FALSE)
         }
-
         weightCheck1 <- unlist(lapply(target.weight1, is.function))
         weightCheck2 <- unlist(lapply(target.weight1, function(x)
             is.numeric(x) * (length(x) == 1)))
         fails1 <- which(weightCheck1 + weightCheck2 == 0)
-
         if (length(fails1) > 0) {
             stop(gsub("\\s+", " ",
                       paste0("Each component of the custom weight
@@ -595,9 +773,8 @@ ivmte <- function(bootstraps = 0, bootstraps.m,
                              must either be functions or constants. The
                              following entries of target.weight1 are neither: ",
                              paste(fails1, collapse = ", "),
-                             ".")))
+                             ".")), call. = FALSE)
         }
-
         if (length(target.weight0) != (length(target.knots0) + 1)) {
             stop(gsub("\\s+", " ",
                       paste0("The number of weight functions declared in
@@ -606,7 +783,8 @@ ivmte <- function(bootstraps = 0, bootstraps.m,
                                  plus 1. Currently, the number of weights
                                  declared is ", length(target.weight0),
                              ", and the number of knots declared is ",
-                             length(target.knots0), ".")))
+                             length(target.knots0), ".")),
+                 call. = FALSE)
         }
         if (length(target.weight1) != (length(target.knots1) + 1)) {
             stop(gsub("\\s+", " ",
@@ -616,16 +794,15 @@ ivmte <- function(bootstraps = 0, bootstraps.m,
                                  plus 1. Currently, the number of weights
                                  declared is ", length(target.weight1),
                              ", and the number of knots declared is ",
-                             length(target.knots1), ".")))
+                             length(target.knots1), ".")),
+                 call. = FALSE)
         }
-
         ## Knots check
         if (!is.null(target.knots0)) {
             knotsCheck1 <- unlist(lapply(target.knots0, is.function))
             knotsCheck2 <- unlist(lapply(target.knots0, function(x)
                 is.numeric(x) * (length(x) == 1)))
             fails0 <- which(knotsCheck1 + knotsCheck2 == 0)
-
             if (length(fails0) > 0) {
                 stop(gsub("\\s+", " ",
                           paste0("Each component of the custom knots
@@ -633,16 +810,14 @@ ivmte <- function(bootstraps = 0, bootstraps.m,
                              must either be functions or constants. The
                              following entries of target.knots0 are neither: ",
                              paste(fails0, collapse = ", "),
-                             ".")))
+                             ".")), call. = FALSE)
             }
         }
-
         if (!is.null(target.knots1)) {
             knotsCheck1 <- unlist(lapply(target.knots1, is.function))
             knotsCheck2 <- unlist(lapply(target.knots1, function(x)
                 is.numeric(x) * (length(x) == 1)))
             fails1 <- which(knotsCheck1 + knotsCheck2 == 0)
-
             if (length(fails1) > 0) {
                 stop(gsub("\\s+", " ",
                           paste0("Each component of the custom knots
@@ -650,53 +825,64 @@ ivmte <- function(bootstraps = 0, bootstraps.m,
                              must either be functions or constants. The
                              following entries of target.knots1 are neither: ",
                              paste(fails0, collapse = ", "),
-                             ".")))
+                             ".")), call. = FALSE)
             }
-        }            
+        }
     }
-
     if (hasArg(link)) {
         if (! link %in% c("linear", "logit", "probit")) {
             stop(gsub("\\s+", " ",
                       "Specified link is not recognized. Choose from 'linear',
-                      'logit', or 'probit'."))
+                      'logit', or 'probit'."), call. = FALSE)
         }
     }
-
     if (hasArg(point)) {
         if (point == TRUE) {
             if (hasArg(m0.dec) | hasArg(m0.inc) |
                 hasArg(m1.dec) | hasArg(m1.inc) |
                 hasArg(mte.dec) | hasArg(mte.inc) |
-                hasArg(audit.nu) | hasArg(audit.nx) |
-                hasArg(grid.nu) | hasArg(grid.nx)|
-                hasArg(audit.tol) | hasArg(audit.max)) {
+                hasArg(audit.nu) | hasArg(audit.nx) | hasArg(audit.add) |
+                hasArg(initgrid.nu) | hasArg(initgrid.nx)|
+                hasArg(audit.max)) {
                 warning(gsub("\\s+", " ",
                              "If argument 'point' is set to TRUE, then shape
                              restrictions on m0 and m1 are ignored, and the
-                             audit procedure is not implemented."))
+                             audit procedure is not implemented."),
+                        call. = FALSE)
             }
         }
     }
-
     ## Seed check
     if (!(is.numeric(seed) & length(seed) == 1)) {
-        stop("'seed' must be a scalar.")
+        stop("'seed' must be a scalar.", call. = FALSE)
     }
-    
     ## Audit checks
-    if (!(is.numeric(obseq.tol) & obseq.tol >= 0)) {
-        stop("Cannot set 'obseq.tol' below 0.")
+    if (!(is.numeric(criterion.tol) & criterion.tol >= 0)) {
+        stop("Cannot set 'criterion.tol' below 0.", call. = FALSE)
     }
-    if (!((grid.nu %% 1 == 0) & grid.nu >= 2)) {
-        stop("grid.nu must be an integer greater than or equal to 2.")
+    if (!((initgrid.nu %% 1 == 0) & initgrid.nu >= 0)) {
+        stop(gsub("\\s+", " ",
+                  "'initgrid.nu' must be an integer than or equal to 0
+                    (end points 0 and 1 are always included)."),
+             call. = FALSE)
     }
-    if (!((grid.nx %% 1 == 0) & grid.nx >= 0)) {
-        stop("'grid.nx' must be an integer greater than or equal to 0.")
+    if (!((initgrid.nx %% 1 == 0) & initgrid.nx >= 0)) {
+        stop("'initgrid.nx' must be an integer greater than or equal to 0.",
+             call. = FALSE)
     }
-
     if (!((audit.nx %% 1 == 0) & audit.nx > 0)) {
-        stop("'audit.nx' must be an integer greater than or equal to 1.")
+        stop("'audit.nx' must be an integer greater than or equal to 1.",
+             call. = FALSE)
+    }
+    if (audit.nx < initgrid.nx) {
+        stop("'audit.nx' must be larger than 'initgrid.nx'.")
+    }
+    if (audit.nu < initgrid.nu) {
+        stop("'audit.nu' must be larger than 'initgrid.nu'.")
+    }
+    if (!((audit.add %% 1 == 0) & audit.add > 0)) {
+        stop("'audit.add' must be an integer greater than or equal to 1.",
+             call. = FALSE)
     }
     if (hasArg(m0.dec) | hasArg(m0.inc) |
         hasArg(m1.dec) | hasArg(m1.inc) |
@@ -704,70 +890,94 @@ ivmte <- function(bootstraps = 0, bootstraps.m,
         hasArg(m0.lb) | hasArg(m0.ub) |
         hasArg(m1.lb) | hasArg(m1.ub) |
         hasArg(mte.lb) | hasArg(mte.ub)) {
-
         noshape = FALSE ## indicator for whether shape restrictions declared
-
-        if (!((audit.nu %% 1 == 0) & audit.nu > 0) | audit.nu < 2) {
-            stop("'audit.nu' must be an integer greater than or equal to 2.")
+        if (!((audit.nu %% 1 == 0) & audit.nu >= 0)) {
+            stop(gsub("\\s+", " ",
+                      "'audit.nu' must be an integer than or equal to 0
+                       (end points 0 and 1 are always included)."),
+                 call. = FALSE)
         }
-
+        if ((hasArg(m0.dec) && !is.logical(m0.dec)) |
+            (hasArg(m1.dec) && !is.logical(m1.dec)) |
+            (hasArg(mte.dec) && !is.logical(mte.dec)) |
+            (hasArg(m0.inc) && !is.logical(m0.inc)) |
+            (hasArg(m1.inc) && !is.logical(m1.inc)) |
+            (hasArg(mte.inc) && !is.logical(mte.inc))) {
+            stop(gsub("\\s+", " ",
+                      "Monotonicity constraints 'm0.dec', 'm1.dec', 'mte.dec',
+                       etc. must be either TRUE or FALSE."),
+                 call. = FALSE)
+        }
+        if ((hasArg(m0.lb) && !is.numeric(m0.lb)) |
+            (hasArg(m1.lb) && !is.numeric(m1.lb)) |
+            (hasArg(mte.lb) && !is.numeric(mte.lb)) |
+            (hasArg(m0.ub) && !is.numeric(m0.ub)) |
+            (hasArg(m1.ub) && !is.numeric(m1.ub)) |
+            (hasArg(mte.ub) && !is.numeric(mte.ub))) {
+            stop(gsub("\\s+", " ",
+                      "Boundedness constraints 'm0.lb', 'm1.lb', 'mte.lb',
+                       etc. must be numeric."),
+                 call. = FALSE)
+        }
     } else {
         noshape = TRUE
         if (!((audit.nu %% 1 == 0) & audit.nu > 0)) {
-            stop("'audit.nu' must be an integer greater than or equal to 1.")
+            stop("'audit.nu' must be an integer greater than or equal to 1.",
+                 call. = FALSE)
         }
     }
     if (!((audit.max %% 1 == 0) & audit.max > 0)) {
-        stop("'audit.max' must be an integer greater than or equal to 1.")
+        stop("'audit.max' must be an integer greater than or equal to 1.",
+             call. = FALSE)
     }
-
     ## Bootstrap checks
-    if (bootstraps < 0 | bootstraps %% 1 != 0) {
-        stop("'bootstraps' must be an integer greater than or equal to 0.")
+    if (bootstraps < 0 | bootstraps %% 1 != 0 | bootstraps == 1) {
+        stop(gsub("\\s+", " ",
+                  "'bootstraps' must either be 0, or be an integer greater than
+                   or equal to 2."), call. = FALSE)
     }
-
     if (hasArg(bootstraps.m)) {
         if (bootstraps.m < 0 | bootstraps.m %% 1 != 0) {
             stop(gsub("\\s+", " ",
                       "'bootstraps.m' must be an integer greater than or equal
-                      to 1."))
+                      to 1."), call. = FALSE)
         }
         if (point == TRUE) {
             warning(gsub("\\s+", " ",
                          "Argument 'bootstrap.m' is only used for
                           partial identification, and will be ignored
-                          under point identification."))
+                          under point identification."), call. = FALSE)
         }
     } else {
         bootstraps.m <- nrow(data)
     }
-
-    if (!is.logical(bootstraps.replace))
-        stop("'bootstraps.replace' must be TRUE or FALSE.")
-
-
+    if (!is.logical(bootstraps.replace)) {
+        stop("'bootstraps.replace' must be TRUE or FALSE.", call. = FALSE)
+    }
     if (max(levels) >= 1 | min(levels) <= 0) {
         stop(gsub("\\s+", " ",
                   "'levels' must be a vector of values strictly between 0 and
-                  1."))
+                  1."), call. = FALSE)
     }
     levels <- sort(levels)
-
-
     if (! ci.type %in% c("forward", "backward", "both")) {
         stop(gsub("\\s+", " ",
                   "'ci.types' selects the type of confidence intervals to be
                   constructed for the treatment effect bound. It must be set to
-                  either 'forward', 'backward', or 'both'."))
+                  either 'forward', 'backward', or 'both'."), call. = FALSE)
+    }
+    if (hasArg(point.eyeweight) && point == FALSE) {
+        warning(gsub("\\s+", " ",
+                     "Argument 'point.eyeweight' is only used for
+                      point identification, and will be ignored when
+                      point = FALSE."), call. = FALSE)
     }
 
     ##---------------------------
     ## 4. Restrict data to complete observations
     ##---------------------------
-
     ## Restrict data used for all parts of procedure to be the same.
     ## Collect list of all terms used in formula
-
     vars_y          <- NULL
     vars_formulas_x <- c()
     vars_formulas_z <- c()
@@ -776,19 +986,16 @@ ivmte <- function(bootstraps = 0, bootstraps.m,
     vars_weights    <- c()
     vars_propensity <- c()
     vars_components <- c()
-
     terms_formulas_x <- c()
     terms_formulas_z <- c()
     terms_mtr0       <- c()
     terms_mtr1       <- c()
     terms_components <- c()
-
     if (classList(ivlike)) {
-
         if (!min(unlist(lapply(ivlike, classFormula)))) {
             stop(gsub("\\s+", " ",
                       "Not all elements in list of formulas are specified
-                      correctly."))
+                      correctly."), call. = FALSE)
         } else {
             vars_formulas_x <- unlist(lapply(ivlike,
                                              getXZ,
@@ -796,37 +1003,31 @@ ivmte <- function(bootstraps = 0, bootstraps.m,
             vars_formulas_z <- unlist(lapply(ivlike,
                                              getXZ,
                                              inst = TRUE))
-
             vars_y <- unique(unlist(lapply(ivlike,
                                            function(x) all.vars(x)[[1]])))
-
             terms_formulas_x <- lapply(ivlike,
                                        getXZ,
                                        inst = FALSE,
                                        terms = TRUE)
-
             terms_formulas_z <- lapply(ivlike,
                                        getXZ,
                                        inst = TRUE,
                                        terms = TRUE)
-
             if (length(vars_y) > 1) {
                 stop(gsub("\\s+", " ",
                           "Multiple response variables specified in list of
-                          IV-like specifications."))
+                          IV-like specifications."),
+                     call. = FALSE)
             }
         }
     } else {
         stop(gsub("\\s+", " ",
                   "'ivlike' argument must either be a formula or a vector of
-                  formulas."))
+                  formulas."), call. = FALSE)
     }
-
     ## Collect list of all terms in subsetting condition
     if (hasArg(subset)) {
-
         vnames <- colnames(data)
-
         if (classList(subset)) {
             svec <- paste(unlist(lapply(subset, deparse)), collapse = " ")
         } else {
@@ -834,73 +1035,119 @@ ivmte <- function(bootstraps = 0, bootstraps.m,
                          Reduce(paste, deparse(substitute(subset))))
         }
         svec <- subsetclean(svec)
-
         checklist <- c()
         checklist <- c(checklist, svec[!isfunctionstring(svec)])
-
         for (w in svec[isfunctionstring(svec)]) {
             arguments <- argstring(w)
             checklist <- c(checklist, unlist(strsplit(arguments, split = ",")))
         }
-
         for (w in checklist) {
             if (w %in% vnames) vars_subsets <- c(vars_subsets, w)
         }
     }
-
     ## Collect list of all terms used in MTRs
-    if (classFormula(m1) & classFormula(m0)) {
-        if(length(Formula::as.Formula(m0))[1] != 0 |
-           length(Formula::as.Formula(m1))[1] != 0) {
-            stop("m0 and m1 must be one-sided formulas.")
-        }
-        splinesobj <- list(removeSplines(m0),
-                           removeSplines(m1))
-
-        m0 <- splinesobj[[1]]$formula
-        m1 <- splinesobj[[2]]$formula
-
-        vars_mtr <- c(all.vars(splinesobj[[1]]$formula),
-                      all.vars(splinesobj[[2]]$formula))
-
-        if (!is.null(splinesobj[[1]]$formula)) {
-            terms_mtr0 <- attr(terms(splinesobj[[1]]$formula),
-                               "term.labels")
-        }
-        if (!is.null(splinesobj[[2]]$formula)) {
-            terms_mtr1 <- attr(terms(splinesobj[[2]]$formula),
-                               "term.labels")
-        }
-
-        if (!is.null(splinesobj[[1]]$splineslist)) {
-            sf0 <- as.formula(paste("~",
-                                    paste(unlist(splinesobj[[1]]$splineslist),
-                                          collapse = " + ")))
-            vars_mtr   <- c(vars_mtr, all.vars(sf0))
-            terms_mtr0 <- c(terms_mtr0, attr(terms(sf0), "term.labels"))
-        }
-
-        if (!is.null(splinesobj[[2]]$splineslist)) {
-            sf1 <- as.formula(paste("~",
-                                    paste(unlist(splinesobj[[2]]$splineslist),
-                                          collapse = " + ")))
-            vars_mtr   <- c(vars_mtr, all.vars(sf1))
-            terms_mtr1 <- c(terms_mtr1, attr(terms(sf1), "term.labels"))
-        }
-
+    parentFrame <- parent.frame()
+    origm0 <- m0
+    origm1 <- m1
+    splinesobj <- list(removeSplines(m0, env = parentFrame),
+                       removeSplines(m1, env = parentFrame))
+    if (is.null(splinesobj[[1]]$formula)) {
+        m0uCheck <- NULL
     } else {
-        stop("m0 and m1 must be one-sided formulas.")
+        m0uCheck <- checkU(splinesobj[[1]]$formula, uname)
     }
-
+    if (is.null(splinesobj[[2]]$formula)) {
+        m1uCheck <- NULL
+    } else {
+        m1uCheck <- checkU(splinesobj[[2]]$formula, uname)
+    }
+    if (is.null(splinesobj[[1]]$splinesdict)) {
+        m0uSplineCheck <- NULL
+    } else {
+        m0uSplineCheck <-
+            checkU(as.formula(paste("~",
+                                    paste(unlist(splinesobj[[1]]$splineslist),
+                                          collapse = "+"))), uname)
+    }
+    if (is.null(splinesobj[[2]]$splinesdict)) {
+        m1uSplineCheck <- NULL
+    } else {
+        m1uSplineCheck <-
+            checkU(as.formula(paste("~",
+                                    paste(unlist(splinesobj[[2]]$splineslist),
+                                          collapse = "+"))), uname)
+    }
+    if (length(m0uCheck) + length(m0uSplineCheck) > 0) {
+        message0 <- paste("  m0:",
+                          paste(c(m0uCheck, m0uSplineCheck), collapse = ", "),
+                          "\n")
+    } else {
+        message0 <- NULL
+    }
+    if (length(m1uCheck) + length(m1uSplineCheck) > 0) {
+        message1 <- paste("  m1:",
+                          paste(c(m1uCheck, m1uSplineCheck), collapse = ", "),
+                          "\n")
+    } else {
+        message1 <- NULL
+    }
+    if (!is.null(message0) | !is.null(message1)) {
+        if (uname != "x") {
+            egv <- "x"
+        } else {
+            egv <- "v"
+        }
+        e1 <- paste0(uname, ", I(", uname, "^3)")
+        e2 <- paste0(egv, ":", uname, ", ", egv, ":I(", uname, "^3)")
+        e3 <- paste0("exp(", uname, "), I((", egv, " * ", uname, ")^2)")
+        stop(gsub("\\s+", " ",
+                  "The following terms are not declared properly."),
+             "\n", message0, message1,
+             gsub("\\s+", " ",
+                  paste0("The unobserved variable '",
+                         uname, "' must be declared as a
+                         monomial, e.g. ", e1, ". The monomial can be
+                         interacted with other variables, e.g. ",
+                         e2, ". Expressions where the unobservable term
+                         is not a monomial are either not permissable or
+                         will not be parsed correctly,
+                         e.g. ", e3, ". Try to rewrite the expression so
+                         that '",  uname, "' is only included in monomials.")),
+             call. = FALSE)
+    }
+    m0 <- splinesobj[[1]]$formula
+    m1 <- splinesobj[[2]]$formula
+    vars_mtr <- c(all.vars(splinesobj[[1]]$formula),
+                  all.vars(splinesobj[[2]]$formula))
+    if (!is.null(splinesobj[[1]]$formula)) {
+        terms_mtr0 <- attr(terms(splinesobj[[1]]$formula),
+                           "term.labels")
+    }
+    if (!is.null(splinesobj[[2]]$formula)) {
+        terms_mtr1 <- attr(terms(splinesobj[[2]]$formula),
+                           "term.labels")
+    }
+    if (!is.null(splinesobj[[1]]$splineslist)) {
+        sf0 <- as.formula(paste("~",
+                                paste(unlist(splinesobj[[1]]$splineslist),
+                                      collapse = " + ")))
+        vars_mtr   <- c(vars_mtr, all.vars(sf0))
+        terms_mtr0 <- c(terms_mtr0, attr(terms(sf0), "term.labels"))
+    }
+    if (!is.null(splinesobj[[2]]$splineslist)) {
+        sf1 <- as.formula(paste("~",
+                                paste(unlist(splinesobj[[2]]$splineslist),
+                                      collapse = " + ")))
+        vars_mtr   <- c(vars_mtr, all.vars(sf1))
+        terms_mtr1 <- c(terms_mtr1, attr(terms(sf1), "term.labels"))
+    }
     ## Collect list of variables used in custom weights (if defined)
     if (!hasArg(target)) {
-
         for (i in 1:length(target.weight0)) {
             if (is.function(target.weight0[[i]])) {
                 vars_weights <- c(vars_weights,
                                   formalArgs(target.weight0[[i]]))
             }
-
             if (i < length(target.weight0)) {
                 if (is.function(target.knots0[[i]])) {
                     vars_weights <- c(vars_weights,
@@ -908,13 +1155,11 @@ ivmte <- function(bootstraps = 0, bootstraps.m,
                 }
             }
         }
-
         for (i in 1:length(target.weight1)) {
             if (is.function(target.weight1[[i]])) {
                 vars_weights <- c(vars_weights,
                                   formalArgs(target.weight1[[i]]))
             }
-
             if (i < length(target.weight1)) {
                 if (is.function(target.knots1[[i]])) {
                     vars_weights <- c(vars_weights,
@@ -923,17 +1168,22 @@ ivmte <- function(bootstraps = 0, bootstraps.m,
             }
         }
     }
-
     ## Collect list of all terms used in propensity formula
-
     if (hasArg(propensity)) {
         if (classFormula(propensity)) {
             if (length(propensity) == 3) {
                 ptreat <- all.vars(propensity)[1]
                 vars_propensity <- all.vars(propensity)
-
+                if (hasArg(target) && target == "late") {
+                    if (!all(late.Z %in% vars_propensity)) {
+                        stop (gsub("\\s+", " ",
+                                   "All variables in 'late.to' and 'late.from'
+                                    must be included in the propensity
+                                    score model."), call. = FALSE)
+                    }
+                }
                 if (hasArg(treat)) {
-                    if (ptreat != deparse(substitute(treat))) {
+                    if (ptreat != treatStr) {
                         stop(gsub("\\s+", " ",
                                   "Variable listed in 'treat' argument
                                  differs from dependent variable in propensity
@@ -946,7 +1196,6 @@ ivmte <- function(bootstraps = 0, bootstraps.m,
                 } else {
                     treat <- ptreat
                 }
-
                 if (length(Formula::as.Formula(propensity))[1] == 0 &&
                     length(all.vars(propensity)) > 1) {
                     stop(gsub("\\s+", " ",
@@ -955,7 +1204,8 @@ ivmte <- function(bootstraps = 0, bootstraps.m,
                           estimated from the data), or a one-sided formula
                           containing a single variable on the RHS (where the
                           variable listed is included in the data, and
-                          corresponds to propensity scores.")))
+                          corresponds to propensity scores.")),
+                         call. = FALSE)
                 }
             } else if (length(propensity) == 2) {
                 if (!hasArg(treat)) {
@@ -967,22 +1217,38 @@ ivmte <- function(bootstraps = 0, bootstraps.m,
                            using the argument 'treat'."),
                          call. = FALSE)
                 } else {
-                    treat <- deparse(substitute(treat))
+                    treat <- treatStr
+                }
+                if (hasArg(target) && target == 'late') {
+                    stop(gsub("\\s+", " ",
+                              "Target parameter 'late' requires a propensity
+                           score model. Agrument 'propensity' should be
+                           a two-sided formula."),
+                         call. = FALSE)
                 }
             }
         } else {
-            if (! deparse(substitute(propensity)) %in% colnames(data)) {
+            if (hasArg(target) && target == 'late') {
+                stop(gsub("\\s+", " ",
+                          "Target parameter 'late' requires a propensity
+                           score model. Agrument 'propensity' should be
+                           a two-sided formula."),
+                     call. = FALSE)
+            }
+            propStr <- deparse(substitute(propensity))
+            propStr <- gsub("~", "", propStr)
+            propStr <- gsub("\\\"", "", propStr)
+            if (!propStr %in% colnames(data)) {
                 stop(gsub("\\s+", " ",
                           "Propensity score argument is interpreted as a
-                          variable name, but is not found in the data set."))
+                          variable name, but is not found in the data set."),
+                     call. = FALSE)
             }
-
             vars_propensity <- c(vars_propensity,
-                                 deparse(substitute(propensity)))
-
+                                 propStr)
             ## Determine treatment variable
             if (hasArg(treat)) {
-                treat <- deparse(substitute(treat))
+                treat <- treatStr
                 vars_propensity <- c(vars_propensity,
                                       treat)
             } else {
@@ -994,8 +1260,7 @@ ivmte <- function(bootstraps = 0, bootstraps.m,
                            the argument 'treat'."),
                      call. = FALSE)
             }
-
-            propensity <- deparse(substitute(propensity))
+            propensity <- propStr
             propensity <- Formula::as.Formula(paste("~", propensity))
             if (length(all.vars(propensity)) > 1) {
                 stop(gsub("\\s+", " ",
@@ -1004,13 +1269,14 @@ ivmte <- function(bootstraps = 0, bootstraps.m,
                           estimated from the data), or a one-sided formula
                           containing a single variable on the RHS (where the
                           variable listed is included in the data, and
-                          corresponds to propensity scores.")))
+                          corresponds to propensity scores.")),
+                     call. = FALSE)
             }
         }
     } else {
         ## Determine treatment variable
         if (hasArg(treat)) {
-            treat <- deparse(substitute(treat))
+            treat <- treatStr
             vars_propensity <- treat
         } else if (is.list(ivlike)) {
             warning(gsub("\\s+", " ",
@@ -1018,35 +1284,31 @@ ivmte <- function(bootstraps = 0, bootstraps.m,
                              is selected as the treatment variable."))
             treat <- all.vars(ivlike[[1]])[2]
         } else {
-            stop("Treatment variable indeterminable.")
+            stop("Treatment variable indeterminable.", call. = FALSE)
         }
-
         ## Construct propensity formula
         terms_propensity <- c(unlist(terms_formulas_x),
                               unlist(terms_formulas_z),
                               unlist(terms_mtr0),
                               unlist(terms_mtr1))
-
         ## Remove all u terms
         uterms <- c()
-
-        um1 <- which(terms_propensity == deparse(substitute(uname)))
-        um2 <- grep(paste0("^[", deparse(substitute(uname)), "][[:punct:]]"),
+        um1 <- which(terms_propensity == uname)
+        um2 <- grep(paste0("^[", uname, "][[:punct:]]"),
                     terms_propensity)
-        um3 <- grep(paste0("[[:punct:]][", deparse(substitute(uname)), "]$"),
+        um3 <- grep(paste0("[[:punct:]][", uname, "]$"),
                     terms_propensity)
         um4 <- grep(paste0("[[:punct:]][",
-                           deparse(substitute(uname)),
+                           uname,
                            "][[:punct:]]"),
                     terms_propensity)
-        um5 <- grep(paste0("[[:punct:]][", deparse(substitute(uname)), "]\\s+"),
+        um5 <- grep(paste0("[[:punct:]][", uname, "]\\s+"),
                     terms_propensity)
-        um6 <- grep(paste0("\\s+[", deparse(substitute(uname)), "][[:punct:]]"),
+        um6 <- grep(paste0("\\s+[", uname, "][[:punct:]]"),
                     terms_propensity)
-        um7 <- grep(paste0("\\s+[", deparse(substitute(uname)), "]\\s+"),
+        um7 <- grep(paste0("\\s+[", uname, "]\\s+"),
                     terms_propensity)
         um8 <- grep("uSplines", terms_propensity)
-
         for (i in 1:8) {
             uterms <- c(uterms, terms_propensity[get(paste0("um", i))])
         }
@@ -1056,21 +1318,16 @@ ivmte <- function(bootstraps = 0, bootstraps.m,
                             paste(unique(c("intercept", terms_propensity)),
                                   collapse = " + "),
                             sep = " ~ ")
-
         propensity <- gsub("intercept", "1", propensity)
-
         propWarn <- paste("No propensity score formula or propensity score
                            variable name provided. By default, the function will
                            create a propensity score formula using all the
                            covariates in the IV-like specifications and the
                            MTRs. The propensity score formula generated is:",
                            propensity)
-
         warning(gsub("\\s+", " ", propWarn), call. = FALSE)
-
         propensity <- as.formula(propensity)
     }
-
     ## Collect all variables declared, and remove unobserved variable
     ## from list
     allvars <- c(vars_y,
@@ -1080,17 +1337,14 @@ ivmte <- function(bootstraps = 0, bootstraps.m,
                  vars_mtr,
                  vars_weights,
                  vars_propensity)
-
     ## For the components, since they may be terms, we first collect
     ## all terms, and then break it down into variables.
     vars_components <- NULL
     if (userComponents) {
         for (comp in components) {
-
             compString <- try(gsub("\\s+", " ",
                                    Reduce(paste, deparse(comp))),
                               silent = TRUE)
-
             if (class(compString) != "try-error") {
                 if (substr(compString, 1, 2) == "c(") {
                     vars_components <- c(vars_components,
@@ -1102,11 +1356,22 @@ ivmte <- function(bootstraps = 0, bootstraps.m,
                                                   substitute = FALSE,
                                                   command = ""))
                 }
+                ## Remove all factor value specifications
+                vars_components <- strsplit(vars_components, ":")
+                vars_components <- lapply(vars_components,
+                                          function(x) {
+                                              xTmp <- sapply(x,
+                                                             strsplit,
+                                                             split = " - ")
+                                              xTmp <- lapply(xTmp,
+                                                             function(x) x[1])
+                                              unlist(xTmp)
+                                          })
+                vars_components <- unique(unlist(vars_components))
             }
         }
     }
     vars_components <- vars_components[vars_components != '""']
-
     ## Break component terms into variables.
     vars_components_tmp <-
         paste(".qqq ~", paste(vars_components[vars_components != "components"],
@@ -1115,17 +1380,14 @@ ivmte <- function(bootstraps = 0, bootstraps.m,
         vars_components_tmp <- paste(vars_components_tmp, " - 1")
     }
     vars_components <- getXZ(as.formula(vars_components_tmp), components = TRUE)
-
     ## Collect all variables, and remove the variable name
     ## corresponding to the unobservable.
     allvars <- c(allvars, vars_components)
     allvars <- unique(allvars)
-    allvars <- allvars[allvars != deparse(substitute(uname))]
-
+    allvars <- allvars[allvars != uname]
     ## Fill in components list if necessary
     comp_filler <- lapply(terms_formulas_x,
                           function(x) as.character(unstring(x)))
-
     if (userComponents) {
         compMissing1 <- unlist(lapply(components, function(x) {
             Reduce(paste, deparse(x)) == ""
@@ -1133,21 +1395,21 @@ ivmte <- function(bootstraps = 0, bootstraps.m,
         compMissing2 <- unlist(lapply(components, function(x) x == ""))
         compMissing3 <- unlist(lapply(components, function(x) x == "c()"))
         compMissing <- as.logical(compMissing1 + compMissing2 + compMissing3)
-
         if (sum(compMissing) > 0) {
             components[compMissing] <- comp_filler[compMissing]
         }
     } else {
         components <- comp_filler
     }
-
     ## Check that all LATE variables are included in the propensity
-    ## formula.
-    if (hasArg(target) && target == "late") {
+    ## formula, if a propensity score formula is provided
+    if (hasArg(target) && target == "late"  &&
+        length(Formula::as.Formula(propensity))[1] != 0) {
         if (!all(late.Z %in% vars_propensity)) {
             stop(gsub("\\s+", " ",
                       "Variables in 'late.Z' argument must be contained
-                       in the propensity score model."))
+                       in the propensity score model."),
+                 call. = FALSE)
         }
         nLateX <- 0
         if (hasArg(late.X)) {
@@ -1155,38 +1417,152 @@ ivmte <- function(bootstraps = 0, bootstraps.m,
             if (!all(late.X %in% vars_propensity)) {
                 stop(gsub("\\s+", " ",
                           "Variables in 'late.X' argument must be contained
-                           in the propensity score model."))
+                           in the propensity score model."),
+                     call. = FALSE)
             }
         }
-        if (length(late.Z) + nLateX != length(vars_propensity) - 1) {
-            stop(gsub("\\s+", " ",
-                      "When estimating the LATE, all covariates in the
-                       propensity model must be fixed using 'late.Z' and
-                       'late.X'. Currently, not all variables are fixed."))
-        }
     }
-    
     ## Keep only complete cases
-    varError <- allvars[! allvars %in% colnames(data)]
-    varError <- varError[varError != "intercept"]
-    if (length(varError) > 0) {
+    varFound1 <- sapply(allvars, exists, where = data)
+    vars_data <- allvars[varFound1]
+    missingVars <- allvars[!varFound1]
+    missingVars <- missingVars[!missingVars %in% c("intercept", uname)]
+    for (i in 1:length(envList)) {
+        varFound2 <- sapply(missingVars, exists, where = envList[[i]])
+        missingVars <- missingVars[!varFound2]
+    }
+    if (length(missingVars) > 0) {
         varError <- paste0("The following variables are not contained
-                          in the data set: ",
-                          paste(varError, collapse = ", "),
+                          in the data set or in the parent.frame(): ",
+                          paste(missingVars, collapse = ", "),
                           ".")
         stop(gsub("\\s+", " ", varError), call. = FALSE)
     }
-
-    data  <- data[(complete.cases(data[, allvars[allvars != "intercept"]])), ]
-
+    data  <- data[complete.cases(data[, vars_data]), ]
     ## Adjust row names to handle bootstrapping
     rownames(data) <- as.character(seq(1, nrow(data)))
-
+    ## Construct a list of what variables interact with the
+    ## spline. The reason for this is that certain interactions with
+    ## factor variables should be dropped to avoid collinearity. Note
+    ## that only interaction terms need to be omitted, so you do not
+    ## need to worry about the formula contained in
+    ## removeSplines$formula.
+    tmpInterName <- "..t.i.n"
+    for (d in 0:1) {
+        if (!is.null(splinesobj[[d + 1]]$splineslist)) {
+            mdata <- unique(data)
+            mdata[, uname] <- 1
+            md <- get(paste0("origm", d))
+            md <- gsub("\\s+", " ", Reduce(paste, deparse(md)))
+            altNames <- list()
+            splineKeys <- names(splinesobj[[d + 1]]$splinescall)
+            for (i in 1:length(splinesobj[[d + 1]]$splinescall)) {
+                tmpName <- paste0(tmpInterName, i)
+                mdata[, tmpName] <- 1
+                altNames[splineKeys[i]] <- tmpName
+                for (j in 1:length(splinesobj[[d + 1]]$splinescall[[i]])) {
+                    origCall <- splinesobj[[d + 1]]$splinescall[[i]][j]
+                    origCall <- gsub("\\)", "\\\\)",
+                                     gsub("\\(", "\\\\(", origCall))
+                    origCall <- gsub("\\$", "\\\\$", origCall)
+                    origCall <- gsub("\\.", "\\\\.", origCall)
+                    origCall <- gsub("\\+", "\\\\+", origCall)
+                    origCall <- gsub("\\*", "\\\\*", origCall)
+                    origCall <- gsub("\\^", "\\\\^", origCall)
+                    md <- gsub(origCall, tmpName, md)
+                }
+            }
+            tmpColNames <- colnames(design(as.formula(md), mdata)$X)
+            for (k in 1:length(altNames)) {
+                tmpName <- paste0(tmpInterName, k)
+                inter1 <- grep(paste0(":", altNames[[k]]),
+                               tmpColNames)
+                inter2 <- grep(paste0(altNames[[k]], ":"),
+                               tmpColNames)
+                interpos <- c(inter1, inter2)
+                if (length(interpos) > 0) {
+                    ## The case where there are interactions with splines
+                    altNames[[k]] <- parenthBoolean(tmpColNames[c(inter1,
+                                                                  inter2)])
+                    altNames[[k]] <- gsub(paste0(":", tmpName), "",
+                                          altNames[[k]])
+                    altNames[[k]] <- gsub(paste0(tmpName, ":"), "",
+                                          altNames[[k]])
+                } else {
+                    ## The case where there are no interactions with
+                    ## splines, i.e spline enters on its own
+                    altNames[[k]] <- "1"
+                }
+            }
+            splinesobj[[d + 1]]$splinesinter <- altNames
+        } else {
+            splinesobj[[d + 1]]$splinesinter <- NULL
+        }
+    }
+    ## Check that all boolean variables have non-zero variance, and
+    ## that all factor variables are complete.
+    allterms <- unlist(c(terms_formulas_x, terms_formulas_z, terms_mtr0,
+                         terms_mtr1, terms_components))
+    allterms <- unique(unlist(sapply(allterms, strsplit, split = ":")))
+    allterms <- parenthBoolean(allterms)
+    ## Check factors
+    factorPos <- grep("factor\\([[:alnum:]]*\\)", allterms)
+    if (length(factorPos) > 0) {
+        factorDict <- list()
+        for (i in allterms[factorPos]) {
+            var <- substr(i, start = 8, stop = (nchar(i) - 1))
+            factorDict[[var]] <- sort(unique(data[, var]))
+        }
+    } else {
+        factorDict <- NULL
+    }
+    ## To check for binary variables
+    binMinCheck <- apply(data, 2, min)
+    binMaxCheck <- apply(data, 2, max)
+    binUniqueCheck <- apply(data, 2, function(x) length(unique(x)))
+    binaryPos <- as.logical((binMinCheck == 0) *
+                           (binMaxCheck == 1) *
+                           (binUniqueCheck == 2))
+    binaryVars <- colnames(data)[binaryPos]
+    if (length(binaryVars) == 0) binaryVars <- NULL
+    ## To check booleans expressions, you just need to ensure there is
+    ## non-zero variance in the design matrix.
+    boolPos <- NULL
+    for (op in c("==", "!=", ">=", "<=", ">",  "<")) {
+        boolPos <- c(boolPos, grep(op, allterms))
+    }
+    if (length(boolPos) > 0) {
+        boolPos <- unique(boolPos)
+        boolVars <- allterms[boolPos]
+    } else {
+        boolVars <- NULL
+    }
+    ## Save call options for return
+    opList <- modcall(call,
+                      newcall = list,
+                      keepargs =  c('target', 'late.from', 'late.to',
+                                    'late.X', 'genlate.lb',
+                                    'genlate.ub', 'm0', 'm1', 'm1.ub',
+                                    'm0.ub', 'm1.lb', 'm0.lb',
+                                    'mte.ub', 'mte.lb', 'm0.dec',
+                                    'm0.inc', 'm1.dec', 'm1.inc',
+                                    'mte.dec', 'mte.inc', 'link',
+                                    'seed'))
+    opList <- eval(opList)
+    opList$ivlike <- ivlike
+    opList$components <- components
+    if (hasArg(subset)) opList$subset <- subset
+    if (hasArg(propensity)) opList$propensity <- propensity
+    if (hasArg(uname)) opList$uname <- uname
+    if (hasArg(treat)) opList$treat <- treat
+    if (hasArg(target.weight0)) opList$target.weight0 <- target.weight0
+    if (hasArg(target.weight1)) opList$target.weight1 <- target.weight1
+    if (hasArg(target.knots0)) opList$target.knots0 <- target.knots0
+    if (hasArg(target.knots1)) opList$target.knots1 <- target.knots1
 
     ##---------------------------
     ## 5. Implement estimates
     ##---------------------------
-
     estimateCall <- modcall(call,
                             newcall = ivmteEstimate,
                             dropargs = c("m0", "m1",
@@ -1200,7 +1576,8 @@ ivmte <- function(bootstraps = 0, bootstraps.m,
                                          "target.weight0", "target.weight1",
                                          "target.knots0", "target.knots1",
                                          "late.Z", "late.to", "late.from",
-                                         "late.X", "eval.X"),
+                                         "late.X", "eval.X",
+                                         "specification.test"),
                             newargs = list(m0 = quote(m0),
                                            m1 = quote(m1),
                                            target.weight0 =
@@ -1214,301 +1591,482 @@ ivmte <- function(bootstraps = 0, bootstraps.m,
                                            lpsolver = quote(lpsolver),
                                            vars_y = quote(vars_y),
                                            vars_mtr = quote(vars_mtr),
+                                           vars_data = quote(vars_data),
                                            terms_mtr0 = quote(terms_mtr0),
                                            terms_mtr1 = quote(terms_mtr1),
                                            treat = quote(treat),
                                            propensity = quote(propensity),
                                            splinesobj = quote(splinesobj),
-                                           components = quote(components)))
-
-    if (hasArg(target) && target == "late") {
-        estimateCall <- modcall(estimateCall,
-                                newargs = list(late.Z = late.Z,
-                                               late.to = late.to,
-                                               late.from = late.from))
+                                           components = quote(components),
+                                           environments = quote(envList)))
+    if (hasArg(target) && (target == "late" | target == "genlate")) {
+        if (target == "late") {
+            estimateCall <- modcall(estimateCall,
+                                    newargs = list(late.Z = late.Z,
+                                                   late.to = late.to,
+                                                   late.from = late.from))
+        }
         if (hasArg(late.X)) {
             estimateCall <- modcall(estimateCall,
                                     newargs = list(late.X = late.X,
                                                    eval.X = eval.X))
         }
     }
-
     ## Estimate bounds
     if (point == FALSE) {
-
+        if (bootstraps > 0) {
+            estimateCall <- modcall(estimateCall,
+                                    newargs = list(save.grid = TRUE))
+        }
         origEstimate <- eval(estimateCall)
-
         ## Estimate bounds without resampling
         if (bootstraps == 0) {
-            return(origEstimate)
-        }
-        ## Estimate bounds with resampling
-        if (bootstraps > 0) {
+            if (!noisy) {
+                ## Some output must be returned, evne if noisy = FALSE
+                cat("\n")
+                cat("Bounds on the target parameter: [",
+                    fmtResult(origEstimate$bounds[1]), ", ",
+                fmtResult(origEstimate$bounds[2]), "]\n",
+                sep = "")
+                if (origEstimate$audit.count == 1) rs <- "round.\n"
+                if (origEstimate$audit.count > 1) rs <- "rounds.\n"
+                if (origEstimate$audit.count < audit.max) {
+                    cat("Audit terminated successfully after",
+                        origEstimate$audit.count,
+                        rs, "\n")
+                }
+                if (origEstimate$audit.count == audit.max) {
+                    if (is.null(origEstimate$audit.grid$violations)) {
+                        cat("Audit terminated successfully after",
+                            origEstimate$audit.count,
+                            rs, "\n")
+                    } else {
+                        cat("\n")
+                        warning(gsub("\\s+", " ",
+                                     "Audit reached audit.max.
+                                      Try increasing audit.max."),
+                                call. = FALSE,
+                                immediate. = TRUE)
+                    }
+                }
+            }
+            output <- origEstimate
+            output$call.options <- opList
+            output <- output[sort(names(output))]
+            class(output) <- "ivmte"
+            return(invisible(output))
+        } else {
+            ## Obtain audit grid from original estimate
+            audit.grid <- origEstimate$audit.grid$a_mbobj
+            origEstimate$audit.grid$a_mbobj <- NULL
+            ## Estimate bounds with resampling
             set.seed(seed)
+            bseeds <- round(runif(bootstraps) * 1000000)
             boundEstimates <- NULL
-
+            propEstimates <- NULL
             b <- 1
+            bootCriterion <- NULL
             bootFailN <- 0
             bootFailNote <- ""
             bootFailIndex <- NULL
-
+            ## Turn off specification test if criterion is 0
+            if (origEstimate$audit.criterion == 0) {
+                specification.test <- FALSE
+            }
+            if (specification.test) {
+                origSset <- lapply(origEstimate$sset, function(x) {
+                    x[c("ivspec", "beta", "g0", "g1")]
+                })
+                origCriterion <- origEstimate$audit.criterion
+            } else {
+                origSset <- NULL
+                origCriterion <- NULL
+            }
             if (!hasArg(bootstraps.m)) bootstraps.m <- nrow(data)
-
+            if (bootstraps.m > nrow(data) && bootstraps.replace == FALSE) {
+                stop(gsub("\\s+", " ",
+                          "Cannot draw more observations than the number of rows
+                           in the data set when 'bootstraps.replace = FALSE'."),
+                     call. = FALSE)
+            }
             while (b <= bootstraps) {
-                bootIDs  <- sample(seq(1, nrow(data)),
+                set.seed(bseeds[b])
+                bootIDs  <- sample(x = seq(1, nrow(data)),
                                    size = bootstraps.m,
                                    replace = bootstraps.replace)
                 bdata <- data[bootIDs, ]
                 if (noisy == TRUE) {
-                    message(paste0("Bootstrap iteration ", b, "..."))
+                    cat("Bootstrap iteration ", b, "...\n", sep = "")
                 }
                 bootCall <-
                     modcall(estimateCall,
-                            dropargs = c("data", "noisy"),
+                            dropargs = c("data", "noisy", "seed",
+                                         "audit.grid", "save.grid",
+                                         "count.moments"),
                             newargs = list(data = quote(bdata),
-                                           noisy = FALSE))
+                                           noisy = FALSE,
+                                           seed = bseeds[b],
+                                           audit.grid = audit.grid,
+                                           save.grid = FALSE,
+                                           orig.sset = origSset,
+                                           orig.criterion = origCriterion,
+                                           count.moments = FALSE))
                 bootEstimate <- try(eval(bootCall), silent = TRUE)
                 if (is.list(bootEstimate)) {
                     boundEstimates  <- rbind(boundEstimates,
                                              bootEstimate$bound)
+                    if (specification.test) {
+                        bootCriterion <- c(bootCriterion,
+                                           bootEstimate$specification.test)
+                    }
+                    if (!"propensity.coef" %in% names(bootEstimate) &&
+                        (class(bootEstimate$propensity$model)[1] == "lm" |
+                         class(bootEstimate$propensity$model)[1] == "glm")) {
+                        propEstimates <-
+                            cbind(propEstimates,
+                                  bootEstimate$propensity$model$coef)
+                    } else {
+                        propEstimates <- cbind(propEstimates,
+                                               bootEstimate$propensity.coef)
+                    }
                     b <- b + 1
-                    bootFailN <- 0
                     if (noisy == TRUE) {
-                        message(paste0("    Audit count: ",
-                                       bootEstimate$auditcount))
-                        message(paste0("    Minimum criterion: ",
-                                       fmtResult(bootEstimate$minobseq)))
-                        message(paste0("    Bounds:",
-                                       paste0("[",
-                                              fmtResult(bootEstimate$bounds[1]),
-                                              ", ",
-                                              fmtResult(bootEstimate$bounds[2]),
-                                              "]")))
+                        cat("    Audit count: ",
+                            bootEstimate$audit.count, "\n", sep = "")
+                        cat("    Minimum criterion: ",
+                            fmtResult(bootEstimate$audit.criterion),
+                            "\n", sep = "")
+                        cat("    Bounds: ",
+                            paste0("[",
+                                   fmtResult(bootEstimate$bounds[1]),
+                                   ", ",
+                                   fmtResult(bootEstimate$bounds[2]),
+                                   "]"), "\n\n", sep = "")
                     }
                 } else {
-                    if (noisy == TRUE) {
-                        stop(paste0("    Error:", bootEstimate))
+                    if (noisy) {
+                        warning(paste0(bootEstimate, ", resampling...\n"),
+                                call. = FALSE,
+                                immediate. = TRUE)
                     }
+                    bseeds[b] <- round(runif(1) * 1000000)
                     bootFailN <- bootFailN + 1
                     bootFailIndex <- unique(c(bootFailIndex, b))
                 }
             }
-            if (length(bootFailIndex) > 0) {
-                warning(gsub("\\s+", " ",
-                             paste0("Bootstrap iteration(s) ",
-                                    paste(bootFailIndex, collapse = ", "),
-                                    " failed. Failed bootstraps are
-                                        repeated.")))
+            if (noisy) {
+                cat("--------------------------------------------------\n")
+                cat("Results", "\n")
+                cat("--------------------------------------------------\n")
             }
-
+            cat("\n")
+            ## Some output must be returned, evne if noisy = FALSE
+            cat("Bounds on the target parameter: [",
+                fmtResult(origEstimate$bounds[1]), ", ",
+                fmtResult(origEstimate$bounds[2]), "]\n",
+                sep = "")
+            if (origEstimate$audit.count == 1) rs <- "round."
+            if (origEstimate$audit.count > 1) rs <- "rounds."
+            if (origEstimate$audit.count < audit.max) {
+                cat("Audit terminated successfully after",
+                    origEstimate$audit.count,
+                    rs, "\n")
+            }
+            if (origEstimate$audit.count == audit.max) {
+                if (is.null(origEstimate$audit.grid$violations)) {
+                    cat("Audit terminated successfully after",
+                        origEstimate$audit.count,
+                        rs, "\n")
+                } else {
+                    warning(gsub("\\s+", " ",
+                                 "Audit reached audit.max.
+                                      Try increasing audit.max."),
+                            call. = FALSE,
+                            immediate. = TRUE)
+                }
+            }
             ## Obtain standard errors of bounds
             bootSE <- apply(boundEstimates, 2, sd)
-
-            ## Construct confidence intervals
-            if (ci.type == "backward" | ci.type == "forward") {
-                ci <- boundCI(bound = origEstimate$bound,
-                              bound.resamples = boundEstimates,
-                              n = nrow(data),
-                              m = bootstraps.m,
-                              levels = levels,
-                              type = ci.type)
-            }
-            if (ci.type == "both") {
-                ci <- list()
-                ci$backward <- boundCI(bound = origEstimate$bound,
-                                       bound.resamples = boundEstimates,
-                                       n = nrow(data),
-                                       m = bootstraps.m,
-                                       levels = levels,
-                                       type = "backward")
-
-                ci$forward <- boundCI(bound = origEstimate$bound,
-                                      bound.resamples = boundEstimates,
-                                      n = nrow(data),
-                                      m = bootstraps.m,
-                                      levels = levels,
-                                      type = "forward")
-            }
-            ci <- boundCI(bound = origEstimate$bound,
-                          bound.resamples = boundEstimates,
+            ## Construct confidence intervals for bounds
+            ci <- boundCI(bounds = origEstimate$bounds,
+                          bounds.resamples = boundEstimates,
                           n = nrow(data),
                           m = bootstraps.m,
                           levels = levels,
-                          type = ci.type)
-
-            ## Obtain p-value
-            if (ci.type == "backward") {
-                pvalue <- boundPValue(ci = ci,
-                                      bound = origEstimate$bound,
-                                      bound.resamples = boundEstimates,
-                                      n = nrow(data),
-                                      m = bootstraps.m,
-                                      levels = levels,
-                                      type = "backward",
-                                      tol = pvalue.tol)
-                names(pvalue) <- "backward"
-            }
-            if (ci.type == "forward") {
-                pvalue <- boundPValue(ci = ci,
-                                      bound = origEstimate$bound,
-                                      bound.resamples = boundEstimates,
-                                      n = nrow(data),
-                                      m = bootstraps.m,
-                                      levels = levels,
-                                      type = "forward",
-                                      tol = pvalue.tol)
-                names(pvalue) <- "forward"
-            }
-            if (ci.type == "both") {
-                pvalue <- c(boundPValue(ci = ci$backward,
-                                        bound = origEstimate$bound,
-                                        bound.resamples = boundEstimates,
-                                        n = nrow(data),
-                                        m = bootstraps.m,
-                                        levels = levels,
-                                        type = "backward",
-                                        tol = pvalue.tol),
-                            boundPValue(ci = ci$forward,
-                                        bound = origEstimate$bound,
-                                        bound.resamples = boundEstimates,
-                                        n = nrow(data),
-                                        m = bootstraps.m,
-                                        levels = levels,
-                                        type = "forward",
-                                        tol = pvalue.tol))
-                names(pvalue) <- c("backward", "forward")
-            }
-
-            if (ci.type == "both") {
-                for (i in c("backward", "forward")) {
-                    message(paste0("\nBootstrapped confidence intervals (",
-                                   i, "):"))
-                    for (j in 1:length(levels)) {
-                        cistr <- paste0("[",
-                                        fmtResult(ci[[i]][j, 1]),
-                                        ", ",
-                                        fmtResult(ci[[i]][j, 2]),
-                                        "]")
-                        message(paste0("    ",
-                                       levels[j] * 100,
-                                       "%: ",
-                                       cistr))
-                    }
+                          type = "both")
+            ## Construct confidence intervals for propensity scores
+            if (!is.null(propEstimates)) {
+                propensity.ci <- list()
+                if (!"propensity.coef" %in% names(origEstimate) &&
+                    class(origEstimate$propensity$model)[1]
+                    != "data.frame" &&
+                       class(origEstimate$propensity$model)[1]
+                    != "data.table") {
+                    propCoef <- origEstimate$propensity$model$coef
+                } else {
+                    propCoef <- origEstimate$propensity.coef
                 }
-                message("\nBootstrapped p-values: ")
-                message(paste0("    Backward: ", fmtResult(pvalue[1])))
-                message(paste0("    Forward:  ", fmtResult(pvalue[2]), "\n"))
+                propSE  <- apply(propEstimates, 1, sd)
+                for (level in levels) {
+                    pLower <- (1 - level) / 2
+                    pUpper <- 1 - (1 - level) / 2
+                    probVec <- c(pLower, pUpper)
+                    tmpPropCi1 <- apply(propEstimates, 1, quantile,
+                                        probs = probVec,
+                                        type = 1)
+                    tmpPropCi2 <- sweep(x = tcrossprod(c(qnorm(pLower),
+                                                         qnorm(pUpper)),
+                                                       propSE), MARGIN = 2,
+                                        propCoef, FUN = "+")
+                    colnames(tmpPropCi2) <- colnames(tmpPropCi1)
+                    rownames(tmpPropCi2) <- rownames(tmpPropCi1)
+                    propensity.ci$ci1[[paste0("level", level * 100)]] <-
+                        t(tmpPropCi1)
+                    propensity.ci$ci2[[paste0("level", level * 100)]] <-
+                        t(tmpPropCi2)
+                }
+            }
+            ## Obtain p-value
+            pvalue <- c(boundPvalue(bounds = origEstimate$bounds,
+                                    bounds.resamples = boundEstimates,
+                                    n = nrow(data),
+                                    m = bootstraps.m,
+                                    type = "backward"),
+                        boundPvalue(bounds = origEstimate$bounds,
+                                    bounds.resamples = boundEstimates,
+                                    n = nrow(data),
+                                    m = bootstraps.m,
+                                    type = "forward"))
+            names(pvalue) <- c("backward", "forward")
+            if (ci.type == "both")  {
+                ciTypes <- c("backward", "forward")
             } else {
-                message(paste0("\nBootstrapped confidence intervals (",
-                               ci.type, "):"))
+                ciTypes <- ci.type
+            }
+            ciN <- 1
+            for (i in ciTypes) {
+                cat("\nBootstrapped confidence intervals (",
+                    i, "):\n", sep = "")
                 for (j in 1:length(levels)) {
                     cistr <- paste0("[",
-                                    fmtResult(ci[j, 1]),
+                                    fmtResult(ci[[i]][j, 1]),
                                     ", ",
-                                    fmtResult(ci[j, 2]),
+                                    fmtResult(ci[[i]][j, 2]),
                                     "]")
-                    message(paste0("    ",
-                                   levels[j] * 100,
-                                   "%: ",
-                                   cistr))
+                    cat("    ",
+                        levels[j] * 100,
+                        "%: ",
+                        cistr, "\n", sep = "")
                 }
-
-                if (ci.type == "backward") {
-                    message(paste0("\nBootstrapped p-value (backward): ",
-                                   pvalue, "\n"))
-                }
-                if (ci.type == "forward") {
-                    message(paste0("\nBootstrapped p-value (forward): ",
-                                   pvalue, "\n"))
-                }
+                cat("p-value: ", fmtResult(pvalue[ciN]), "\n", sep = "")
+                ciN <- ciN + 1
             }
-
+            ## Obtain specification test
+            if (specification.test) {
+                criterionPValue <- mean(origEstimate$audit.criterion <=
+                                        bootCriterion)
+                cat("Bootstrapped specification test p-value: ",
+                    criterionPValue, "\n", sep = "")
+            }
+            ## Print bootstrap statistics
+            cat(sprintf("Number of bootstraps: %s",
+                        bootstraps))
+            if (bootFailN > 0) {
+                cat(sprintf(" (%s failed and redrawn)\n",
+                            bootFailN))
+            } else {
+                cat("\n")
+            }
+            cat("\n")
             ## Return output
-            return(c(origEstimate,
-                     list(bound.se = bootSE,
-                          bound.bootstraps = boundEstimates,
-                          ci = ci,
-                          pvalue = pvalue,
-                          bootstraps = bootstraps,
-                          failed.bootstraps = length(bootFailIndex))))
+            output <- c(origEstimate,
+                        list(bounds.se = bootSE,
+                             bounds.bootstraps = boundEstimates,
+                             bounds.ci = ci,
+                             pvalue = pvalue,
+                             bootstraps = bootstraps,
+                             bootstraps.failed = bootFailN))
+            if (specification.test) {
+                output$specification.pvalue <- criterionPValue
+            }
+            if (!is.null(propEstimates)) {
+                output$propensity.se <- propSE
+                output$propensity.ci  <- propensity.ci
+            }
+            output$call.options <- opList
+            output <- output[sort(names(output))]
+            class(output) <- "ivmte"
+            return(invisible(output))
         }
     }
-
-    ## Point estimate  without resampling
+    ## Point estimate without resampling
     if (point == TRUE & bootstraps == 0) {
-        return(eval(estimateCall))
+        origEstimate <- eval(estimateCall)
+        if (!noisy) {
+            ## Some output must be returned, even if noisy = FALSE
+            cat("\n")
+            cat("Point estimate of the target parameter: ",
+                fmtResult(origEstimate$pointestimate), "\n\n",
+                sep = "")
+        }
+        output <- origEstimate
+        output$call.options = opList
+        output <- output[sort(names(output))]
+        class(output) <- "ivmte"
+        return(invisible(output))
     }
-
     ## Point estimate with resampling
     if (point == TRUE & bootstraps > 0) {
         set.seed(seed)
+        bseeds <- round(runif(bootstraps) * 1000000)
         origEstimate <- eval(estimateCall)
-
         teEstimates  <- NULL
         mtrEstimates <- NULL
         propEstimates <- NULL
-
+        jstats <- NULL
         b <- 1
         bootFailN <- 0
         bootFailNote <- ""
         bootFailIndex <- NULL
-
         if (!hasArg(bootstraps.m)) bootstraps.m <- nrow(data)
-
+        if (bootstraps.m > nrow(data) && bootstraps.replace == FALSE) {
+            stop(gsub("\\s+", " ",
+                      "Cannot draw more observations than the number of rows
+                           in the data set when 'bootstraps.replace = FALSE'."),
+                 call. = FALSE)
+        }
+        totalBootstraps <- 0
+        factorMessage <- 0
+        factorText <- gsub("\\s+", " ",
+                           "Insufficient variation in categorical variables
+                           (i.e. factor variables, binary variables,
+                           boolean expressions) in the bootstrap sample.
+                           Additional bootstrap samples will be drawn.")
         while (b <= bootstraps) {
+            set.seed(bseeds[b])
+            totalBootstraps <- totalBootstraps + 1
             bootIDs  <- sample(seq(1, nrow(data)),
                                  size = bootstraps.m,
-                                 replace = bootstraps.replace)
+                               replace = bootstraps.replace)
             bdata <- data[bootIDs, ]
+            ## Check if the bootstrap data contains sufficient
+            ## variation in all boolean and factor expressions.
+            if (!is.null(factorDict)) {
+                for (i in 1:length(factorDict)) {
+                    factorCheck <-
+                        suppressWarnings(
+                            all(sort(unique(bdata[, names(factorDict)[i]])) ==
+                            factorDict[[i]]))
+                    if (!factorCheck) break
+                }
+                if (!factorCheck) {
+                    if (factorMessage == 0) {
+                        factorMessage <- 1
+                        warning(factorText, call. = FALSE, immediate. = TRUE)
+                    }
+                    next
+                    }
+            }
+            ## Check if the binary variables contain sufficient variation
+            if (!is.null(binaryVars)) {
+                binarySd <- apply(as.matrix(bdata[, binaryVars]), 2, sd)
+                if (! all(binarySd > 0)) {
+                    if (factorMessage == 0) {
+                        factorMessage <- 1
+                        warning(factorText, call. = FALSE, immediate. = TRUE)
+                    }
+                    next
+                    }
+            }
+            ## Check if the boolean variables contain sufficient variation
+            if (!is.null(boolVars)) {
+                boolFormula <-
+                    as.formula(paste("~ 0 +", paste(boolVars,
+                                                    collapse = " + ")))
+                boolDmat <- design(boolFormula, bdata)$X
+                boolSd <- apply(boolDmat, 2, sd)
+                if (! all(boolSd > 0)) {
+                    if (factorMessage == 0) {
+                        factorMessage <- 1
+                        warning(factorText, call. = FALSE, immediate. = TRUE)
+                    }
+                    next
+                }
+            }
             if (noisy == TRUE) {
-                message(paste0("Bootstrap iteration ", b, "..."))
+                cat("Bootstrap iteration ", b, "...\n", sep = "")
             }
             bootCall <-
                 modcall(estimateCall,
-                        dropargs = c("data", "noisy"),
+                        dropargs = c("data", "noisy", "seed"),
                         newargs = list(data = quote(bdata),
-                                       noisy = FALSE))
+                                       noisy = FALSE,
+                                       seed = bseeds[b],
+                                       point.center = origEstimate$moments,
+                                       point.redundant =
+                                           origEstimate$redundant))
             bootEstimate <- try(eval(bootCall), silent = TRUE)
             if (is.list(bootEstimate)) {
                 teEstimates  <- c(teEstimates, bootEstimate$pointestimate)
                 mtrEstimates <- cbind(mtrEstimates, bootEstimate$mtr.coef)
-                propEstimates <- cbind(propEstimates,
-                                       bootEstimate$propensity$model$coef)
+                if (!"propensity.coef" %in% names(bootEstimate)) {
+                    propEstimates <- cbind(propEstimates,
+                                           bootEstimate$propensity$model$coef)
+                } else {
+                    propEstimates <- cbind(propEstimates,
+                                           bootEstimate$propensity.coef)
+                }
+                if (!is.null(bootEstimate$jtest)) {
+                    jstats <- c(jstats, bootEstimate$jtest[1])
+                }
                 b <- b + 1
-                bootFailN <- 0
                 if (noisy == TRUE) {
-                    message(paste0("    Point estimate:",
-                                   fmtResult(bootEstimate$pointestimate)))
+                    cat("    Point estimate:",
+                        fmtResult(bootEstimate$pointestimate), "\n\n", sep = "")
                 }
             } else {
                 if (noisy == TRUE) {
-                    message(paste0("    Error, resampling..."))
+                    message("    Error, resampling...\n", sep = "")
                 }
+                bseeds[b] <- round(runif(1) * 1000000)
                 bootFailN <- bootFailN + 1
                 bootFailIndex <- unique(c(bootFailIndex, b))
             }
         }
-        if (length(bootFailIndex) > 0) {
+        if (bootFailN > 0) {
             warning(gsub("\\s+", " ",
                          paste0("Bootstrap iteration(s) ",
                                 paste(bootFailIndex, collapse = ", "),
-                                " failed. Failed bootstraps are repeated.")))
+                                " failed. Failed bootstraps are repeated.")),
+                    call. = FALSE)
         }
-
         bootSE <- sd(teEstimates)
         mtrSE  <- apply(mtrEstimates, 1, sd)
-        propSE  <- apply(propEstimates, 1, sd)
-
-        ## Construct p-value
-        pvalue <- (sum(teEstimates >= abs(origEstimate$pointestimate)) +
-            sum(teEstimates <= -abs(origEstimate$pointestimate))) / bootstraps
-
+        if (!is.null(propEstimates)) {
+            propSE  <- apply(propEstimates, 1, sd)
+        }
+        ## Construct p-values (point estimate and J-test)
+        pvalue <- c(nonparametric =
+                        (sum(teEstimates - origEstimate$pointestimate >=
+                             abs(origEstimate$pointestimate)) +
+                         sum(teEstimates - origEstimate$pointestimate <=
+                             -abs(origEstimate$pointestimate))) / bootstraps,
+                    parametric =
+                        pnorm(-abs(origEstimate$pointestimate -
+                                   mean(teEstimates)) / bootSE) * 2)
+        if (!is.null(jstats)) {
+            jtest <- c(mean(jstats >= origEstimate$jtest[1]),
+                       origEstimate$jtest)
+            names(jtest) <- c("Bootstrapped p-value", names(origEstimate$jtest))
+            jtest <- jtest[c(2, 1, 3, 4)]
+        } else {
+            jtest <- NULL
+        }
         ## Construct confidence intervals for various levels
         for (level in levels) {
             pLower <- (1 - level) / 2
             pUpper <- 1 - (1 - level) / 2
             probVec <- c(pLower, pUpper)
-
             ## Conf. int. 1: quantile method (same as percentile method)
             assign(paste0("ci1", level * 100),
                 quantile(x = teEstimates,
@@ -1518,66 +2076,103 @@ ivmte <- function(bootstraps = 0, bootstraps.m,
                 apply(mtrEstimates, 1, quantile,
                       probs = probVec,
                       type = 1))
-            assign(paste0("propci1", level * 100),
-                apply(propEstimates, 1, quantile,
-                      probs = probVec,
-                      type = 1))
-
+            if (!is.null(propEstimates)) {
+                assign(paste0("propci1", level * 100),
+                       apply(propEstimates, 1, quantile,
+                             probs = probVec,
+                             type = 1))
+            }
             ## Conf. int. 2: percentile method using Z statistics
             tmpCi2 <- origEstimate$pointestimate +
                 c(qnorm(pLower), qnorm(pUpper)) * bootSE
             names(tmpCi2) <- paste0(probVec * 100, "%")
-
             tmpMtrCi2 <- sweep(x = tcrossprod(c(qnorm(pLower),
                                                 qnorm(pUpper)),
                                               mtrSE),
                                MARGIN = 2, origEstimate$mtr.coef, FUN = "+")
-            tmpPropCi2 <- sweep(x = tcrossprod(c(qnorm(pLower),
-                                                 qnorm(pUpper)),
-                                               propSE), MARGIN = 2,
-                                origEstimate$prop$model$coef, FUN = "+")
             colnames(tmpMtrCi2) <- colnames(get(paste0("mtrci1",
                                                        level * 100)))
             rownames(tmpMtrCi2) <- rownames(get(paste0("mtrci1",
                                                        level * 100)))
-            colnames(tmpPropCi2) <- colnames(get(paste0("propci1",
-                                                        level * 100)))
-            rownames(tmpPropCi2) <- rownames(get(paste0("propci1",
-                                                        level * 100)))
-
             assign(paste0("ci2", level * 100), tmpCi2)
             assign(paste0("mtrci2", level * 100), tmpMtrCi2)
-            assign(paste0("propci2", level * 100), tmpPropCi2)
+            ## Special case for propensity scores, which may not exist
+            if (!"propensity.coef" %in% names(origEstimate)) {
+                propCoef <- origEstimate$propensity$model$coef
+            } else {
+                propCoef <- origEstimate$propensity.coef
+            }
+            if (!is.null(propEstimates)) {
+                tmpPropCi2 <- sweep(x = tcrossprod(c(qnorm(pLower),
+                                                     qnorm(pUpper)),
+                                                   propSE), MARGIN = 2,
+                                    propCoef, FUN = "+")
+                colnames(tmpPropCi2) <- colnames(get(paste0("propci1",
+                                                            level * 100)))
+                rownames(tmpPropCi2) <- rownames(get(paste0("propci1",
+                                                            level * 100)))
+                assign(paste0("propci2", level * 100), tmpPropCi2)
+            }
         }
-
         ## Prepare output
         output1 <- c(origEstimate,
-                     list(pointestimate.se  = bootSE,
-                          mtr.se = mtrSE,
-                          prop.se = propSE,
-                          pointestimate.bootstraps = teEstimates,
+                     list(pointestimate.se = bootSE,
+                          mtr.se = mtrSE))
+        if (!is.null(propEstimates)) output1$propensity.se <- propSE
+        output1 <- c(output1,
+                     list(pointestimate.bootstraps = teEstimates,
                           mtr.bootstraps = t(mtrEstimates)))
-        output2 <- list()
+        pointestimate.ci <- list()
+        mtr.ci <- list()
+        if (!is.null(propEstimates)) {
+            propensity.ci <- list()
+        }
         for (level in levels) {
-            output2[[paste0("pointestimate.ci1.", level * 100)]] <-
-                get(paste0("ci1", level * 100))
-            output2[[paste0("mtr.ci1.", level * 100)]] <-
+            pointestimate.ci$nonparametric <-
+                rbind(pointestimate.ci$nonparametric,
+                      get(paste0("ci1", level * 100)))
+            pointestimate.ci$normal <-
+                rbind(pointestimate.ci$normal,
+                      get(paste0("ci2", level * 100)))
+            mtr.ci$nonparametric[[paste0("level", level * 100)]] <-
                 t(get(paste0("mtrci1", level * 100)))
-            output2[[paste0("prop.ci1.", level * 100)]] <-
-                t(get(paste0("propci1", level * 100)))
-            output2[[paste0("pointestimate.ci2.", level * 100)]] <-
-                get(paste0("ci2", level * 100))
-            output2[[paste0("mtr.ci2.", level * 100)]] <-
+            mtr.ci$normal[[paste0("level", level * 100)]] <-
                 t(get(paste0("mtrci2", level * 100)))
-            output2[[paste0("prop.ci2.", level * 100)]] <-
-                t(get(paste0("propci2", level * 100)))
+            if (!is.null(propEstimates)) {
+                propensity.ci$nonparametric[[paste0("level", level * 100)]] <-
+                    t(get(paste0("propci1", level * 100)))
+                propensity.ci$normal[[paste0("level", level * 100)]] <-
+                    t(get(paste0("propci2", level * 100)))
+            }
+        }
+        rownames(pointestimate.ci$nonparametric) <- levels
+        rownames(pointestimate.ci$normal) <- levels
+        colnames(pointestimate.ci$nonparametric) <- c("lb", "ub")
+        colnames(pointestimate.ci$normal) <- c("lb", "ub")
+        output2 <- list(pointestimate.ci = pointestimate.ci,
+                        mtr.ci = mtr.ci)
+        if (!is.null(propEstimates)) {
+            output2$propensity.ci = propensity.ci
         }
         output3 <- list(pvalue = pvalue,
                         bootstraps = bootstraps,
-                        failed.bootstraps = length(bootFailIndex))
+                        bootstraps.failed = bootFailN,
+                        jtest = jtest,
+                        jtest.bootstraps = jstats)
+        if ("jtest" %in% names(output1) &&
+            "jtest" %in% names(output3)) {
+            output1$jtest <- NULL
+        }
         output <- c(output1, output2, output3)
-
-        message("\nBootstrapped confidence intervals (nonparametric):")
+        if (noisy) {
+            cat("--------------------------------------------------\n")
+            cat("Results", "\n")
+            cat("--------------------------------------------------\n")
+        }
+        cat("\nPoint estimate of the target parameter: ",
+            fmtResult(origEstimate$pointestimate), "\n",
+            sep = "")
+        cat("\nBootstrapped confidence intervals (nonparametric):\n")
         for (level in levels) {
             ci1str <- get(paste0("ci1", level * 100))
             ci1str <- paste0("[",
@@ -1585,27 +2180,55 @@ ivmte <- function(bootstraps = 0, bootstraps.m,
                              ", ",
                              fmtResult(ci1str[2]),
                              "]")
-            message(paste0("    ",
-                           level * 100,
-                           "%: ",
-                           ci1str))
+            cat("    ",
+                level * 100,
+                "%: ",
+                ci1str, "\n", sep = "")
         }
-        message("\nBootstrapped confidence intervals (normal quantiles):")
-        for (level in levels) {
-            ci2str <- get(paste0("ci2", level * 100))
-            ci2str <- paste0("[",
-                             fmtResult(ci2str[1]),
-                             ", ",
-                             fmtResult(ci2str[2]),
-                             "]")
-            message(paste0("    ",
-                           level * 100,
-                           "%: ",
-                           ci2str))
+        cat("p-value: ",
+            fmtResult(pvalue[1]), "\n", sep = "")
+        if (!is.null(jtest)) {
+            cat("Bootstrapped J-test p-value: ",
+                fmtResult(jtest[2]), "\n", sep = "")
         }
-        message(paste0("\nBootstrapped p-value: ",
-                       fmtResult(pvalue), "\n"))
-        return(output)
+        cat(sprintf("Number of bootstraps: %s",
+                    bootstraps))
+        if (bootFailN > 0) {
+            cat(sprintf(" (%s failed and redrawn)\n",
+                        bootFailN))
+        } else {
+            cat("\n")
+        }
+        cat("\n")
+        ## cat("Bootstrapped confidence intervals (normal quantiles):\n")
+        ## for (level in levels) {
+        ##     ci2str <- get(paste0("ci2", level * 100))
+        ##     ci2str <- paste0("[",
+        ##                      fmtResult(ci2str[1]),
+        ##                      ", ",
+        ##                      fmtResult(ci2str[2]),
+        ##                      "]")
+        ##     cat("    ",
+        ##         level * 100,
+        ##         "%: ",
+        ##         ci2str, "\n", sep = "")
+        ## }
+        ## cat("p-value: ",
+        ##     fmtResult(pvalue[2]), "\n\n", sep = "")
+        if (totalBootstraps > bootstraps) {
+            warning(gsub("\\s+", " ",
+                         paste0("In order to obtain ", bootstraps, " boostrap
+                         samples without omiting any
+                         levels from all categorical variables,
+                         a total of ", totalBootstraps, " samples
+                         had to be drawn. This is due to factor variables
+                         and/or boolean variables potentially being omitted from
+                         boostrap samples.")), call. = FALSE)
+        }
+        output$call.options <- opList
+        output <- output[sort(names(output))]
+        class(output) <- "ivmte"
+        return(invisible(output))
     }
 }
 
@@ -1615,9 +2238,9 @@ ivmte <- function(bootstraps = 0, bootstraps.m,
 #' This function constructs the forward and backward confidence
 #' intervals for the treatment effect under partial identification.
 #'
-#' @param bound vector, bound of the treatment effects under partial
+#' @param bounds vector, bounds of the treatment effects under partial
 #'     identification.
-#' @param bound.resamples matrix, stacked bounds of the treatment
+#' @param bounds.resamples matrix, stacked bounds of the treatment
 #'     effects under partial identification. Each row corresponds to a
 #'     subset resampled from the original data set.
 #' @param n integer, size of original data set.
@@ -1626,9 +2249,9 @@ ivmte <- function(bootstraps = 0, bootstraps.m,
 #'     correspond to the level of the confidence intervals constructed
 #'     via bootstrap.
 #' @param type character. Set to 'forward' to construct the forward
-#'     confidence interval for the treatment effect bound. Set to
+#'     confidence interval for the treatment effect bounds. Set to
 #'     'backward' to construct the backward confidence interval for
-#'     the treatment effect bound. Set to 'both' to construct both
+#'     the treatment effect bounds. Set to 'both' to construct both
 #'     types of confidence intervals.
 #' @return if \code{type} is 'forward' or 'backward', then the
 #'     corresponding type of confidence interval for each level is
@@ -1637,57 +2260,47 @@ ivmte <- function(bootstraps = 0, bootstraps.m,
 #'     is returned. One element of the list is the matrix of backward
 #'     confidence intervals, and the other element of the list is the
 #'     matrix of forward confidence intervals.
-boundCI <- function(bound, bound.resamples, n, m, levels, type) {
-
+boundCI <- function(bounds, bounds.resamples, n, m, levels, type) {
     if (type == "both") output <- list()
-
     ## Rescale and center bounds
-
     boundLBmod <- sqrt(m) *
-        (bound.resamples[, 1] - bound[1])
+        (bounds.resamples[, 1] - bounds[1])
     boundUBmod <- sqrt(m) *
-        (bound.resamples[, 2] - bound[2])
-
+        (bounds.resamples[, 2] - bounds[2])
     ## Construct backward confidence interval
     if (type %in% c('backward', 'both')) {
-        backwardCI <- cbind(bound[1] +
+        backwardCI <- cbind(bounds[1] +
                             (1 / sqrt(n)) *
                             quantile(boundLBmod,
                                      0.5 * (1 - levels),
                                      type = 1),
-                            bound[2] +
+                            bounds[2] +
                             (1 / sqrt(n)) *
                             quantile(boundUBmod,
                                      0.5 * (1 + levels),
                                      type = 1))
-
         colnames(backwardCI) <- c("lb.backward", "ub.backward")
         rownames(backwardCI) <- levels
-
         if (type == "both") output$backward <- backwardCI
         if (type == "backward") output <- backwardCI
     }
-
     ## Construct forward confidence interval
     if (type %in% c('forward', 'both')) {
-        forwardCI <- cbind(bound[1] -
+        forwardCI <- cbind(bounds[1] -
                            (1 / sqrt(n)) *
                            quantile(boundLBmod,
                                     0.5 * (1 + levels),
                                     type = 1),
-                           bound[2] -
+                           bounds[2] -
                            (1 / sqrt(n)) *
                            quantile(boundUBmod,
                                     0.5 * (1 - levels),
                                     type = 1))
-
         colnames(forwardCI) <- c("lb.forward", "ub.forward")
         rownames(forwardCI) <- levels
-
         if (type == "both") output$forward <- forwardCI
         if (type == "forward") output <- forwardCI
     }
-
     return(output)
 }
 
@@ -1698,67 +2311,61 @@ boundCI <- function(bound, bound.resamples, n, m, levels, type) {
 #' partial identification. p-values corresponding to forward and
 #' backward confidence intervals can be returned.
 #'
-#' @param ci matrix or list. If \code{type} is set to 'forward' or
-#'     'backward', then \code{ci} should be a matrix of forward or
-#'     backward confidence intervals corresponding to the levels
-#'     declared in the option \code{levels}. If \code{type} is set to
-#'     'both', then \code{ci} should be a list of two elements. One
-#'     element is a matrix of forward confidence intervals, and the
-#'     other element is a matrix of backward confidence intervals.
-#' @param bound vector, bound of the treatment effects under partial
+#' @param bounds vector, bounds of the treatment effects under partial
 #'     identification.
-#' @param bound.resamples matrix, stacked bounds of the treatment
+#' @param bounds.resamples matrix, stacked bounds of the treatment
 #'     effects under partial identification. Each row corresponds to a
 #'     subset resampled from the original data set.
 #' @param n integer, size of original data set.
 #' @param m integer, size of resampled data sets.
-#' @param levels vector, real numbers between 0 and 1. Values
-#'     correspond to the level of the confidence intervals constructed
-#'     via bootstrap.
 #' @param type character. Set to 'forward' to construct the forward
-#'     confidence interval for the treatment effect bound. Set to
+#'     confidence interval for the treatment effect bounds. Set to
 #'     'backward' to construct the backward confidence interval for
-#'     the treatment effect bound. Set to 'both' to construct both
+#'     the treatment effect bounds. Set to 'both' to construct both
 #'     types of confidence intervals.
-#' @param tol numeric, default set to 1e-08. The p-value is
-#'     constructed by iteratively adjusting the confidence level to
-#'     find a confidence interval that does not contain 0. When the
-#'     adjustment of the confidence level falls below \code{tol}, no
-#'     further iterations are performed.
 #' @return If \code{type} is 'forward' or 'backward', a scalar p-value
 #'     corresponding to the type of confidence interval is
 #'     returned. If \code{type} is 'both', a vector of p-values
 #'     corresponding to the forward and backward confidence intervals
 #'     is returned.
-boundPValue <- function(ci, bound, bound.resamples, n, m, levels,
-                        type, tol = 1e-08) {
-
-    ci <- rbind(c(bound[1], bound[1]), ci, c(-Inf, Inf))
-    rownames(ci) <- c(0, levels, 1)
-
-    inVec <- apply(ci, 1, function(x) 0 > x[1] & 0 < x[2])
-
-    lbPos <- which(sapply(seq(1, length(inVec) - 1), function(x) {
-        inVec[x] == inVec[x + 1]
-    }) == FALSE)
-
-    levelLB <- c(0, levels, 1)[lbPos]
-    levelUB <- c(0, levels, 1)[lbPos + 1]
-
-    while (levelUB - levelLB > tol) {
-
-        midpoint <- 0.5 * (levelLB + levelUB)
-
-        newCI <- boundCI(bound, bound.resamples, n = 1000, m = 1000,
-                         levels = midpoint, type = "backward")
-
-        if (0 > newCI[1] & 0 < newCI[2]) {
-            levelUB <- midpoint
-        } else {
-            levelLB <- midpoint
-        }
+boundPvalue <- function(bounds, bounds.resamples, n, m, type) {
+    levels <- seq(0, 1, 1 / nrow(bounds.resamples))[-1]
+    cis <- boundCI(bounds, bounds.resamples, n, m, levels, type)
+    posNo0 <- apply(cis, MARGIN = 1, FUN = function(x) {
+        !((0 >= x[1]) && (0 <= x[2]))
+    })
+    if (all(posNo0)) {
+        return(0)
+    } else if (all(!posNo0)) {
+        return(1)
+    } else {
+        return(1 - max(levels[posNo0]))
     }
-    return(1 - levelLB)
+}
+
+#' Check polynomial form of the u-term
+#'
+#' This function ensures that the unobservable term enters into the
+#' MTR in the correct manner. That is, it enters as a polynomial.
+#'
+#' @param formula a formula.
+#' @param uname name of the unobserved variable.
+#' @return If the unobservable term is entered correctly into the
+#'     formula, then \code{NULL} is returned. Otherwise, the vector of
+#'     incorrect terms is returned.
+checkU <- function(formula, uname) {
+    termsList <- attr(terms(formula), "term.labels")
+    termsList <- unique(unlist(strsplit(termsList, ":")))
+    termsVarList <- lapply(termsList, function(x) {
+        all.vars(as.formula(paste("~", x)))
+    })
+    upos <- unlist(lapply(termsVarList, function(x) uname %in% x))
+    parPos <- unlist(lapply(termsList, function(x) grepl("\\(", x)))
+    termsList <- termsList[as.logical(upos * parPos)]
+    checkVec <- grepl(paste0("^I\\(", uname, "\\^[0-9]+\\)$"), termsList)
+    if (all(checkVec))  errorTermsFormula <- NULL
+    if (!all(checkVec)) errorTermsFormula <- termsList[!checkVec]
+    return(errorTermsFormula)
 }
 
 #' Single iteration of estimation procedure from Mogstad, Torgovitsky,
@@ -1789,87 +2396,6 @@ boundPValue <- function(ci, bound, bound.resamples, n, m, levels,
 #' or not the constraints hold. The user can specify how stringent
 #' this audit procedure is using the function arguments.
 #'
-#' @param ivlike formula or vector of formulas used to specify the
-#'     regressions for the IV-like estimands.
-#' @param data \code{data.frame} used to estimate the treatment
-#'     effects.
-#' @param subset single subset condition or list of subset conditions
-#'     corresponding to each IV-like estimand. The input must be
-#'     logical. See \code{\link{l}} on how to input the argument. If
-#'     the user wishes to select specific rows, construct a binary
-#'     variable in the data set, and set the condition to use only
-#'     those observations for which the binary variable is 1, e.g. the
-#'     binary variable is \code{use}, and the subset condition is
-#'     \code{use == 1}.
-#' @param components a list of vectors of the terms/components from
-#'     the regressions specifications we want to include in the set of
-#'     IV-like estimands. To select the intercept term, include in the
-#'     vector of variable names, `intercept'. See \code{\link{l}} on
-#'     how to input the argument. If no components for a IV
-#'     specification are given, then all components from that IV
-#'     specification will be included.
-#' @param propensity formula or variable name corresponding to
-#'     propensity to take up treatment. If a formula is declared, then
-#'     the function estimates propensity score according to the
-#'     formula and link specified. If a variable name is declared,
-#'     then the corresponding column in the data is taken as the
-#'     vector of propensity scores.
-#' @param link name of link function to estimate propensity score. Can
-#'     be chosen from \code{linear}, \code{probit}, or \code{logit}.
-#'     Default is set to "logit".
-#' @param treat variable name for treatment indicator.
-#' @param m0 one-sided formula for marginal treatment response
-#'     function for control group. Splines can also be incorporated
-#'     using the expression "uSplines(degree, knots, intercept)". The
-#'     'intercept' argument may be omitted, and is set to \code{TRUE}
-#'     by default.
-#' @param m1 one-sided formula for marginal treatment response
-#'     function for treated group. Splines can also be incorporated
-#'     using the expression "uSplines(degree, knots, intercept)". The
-#'     'intercept' argument may be omitted, and is set to \code{TRUE}
-#'     by default.
-#' @param vars_y character, variable name of observed outcome
-#'     variable.
-#' @param vars_mtr character, vector of variables entering into
-#'     \code{m0} and \code{m1}.
-#' @param terms_mtr0 character, vector of terms entering into
-#'     \code{m0}.
-#' @param terms_mtr1 character, vector of terms entering into
-#'     \code{m1}.
-#' @param splinesobj list of spline components in the MTRs for treated
-#'     and control groups. Spline terms are extracted using
-#'     \code{\link{removeSplines}}.
-#' @param uname variable name for unobservable used in declaring MTRs.
-#' @param target target parameter to be estimated. Currently function
-#'     allows for ATE ("\code{ate}"), ATT ("\code{att}"), ATU
-#'     ("\code{atu}"), LATE ("\code{late}"), and generalized LATE
-#'     ("\code{genlate}").
-#' @param target.weight0 user-defined weight function for the control
-#'     group defining the target parameter. A list of functions can be
-#'     submitted if the weighting function is in fact a spline. The
-#'     arguments of the function should be variable names in
-#'     \code{data}. If the weight is constant across all observations,
-#'     then the user can instead submit the value of the weight
-#'     instead of a function.
-#' @param target.weight1 user-defined weight function for the treated
-#'     group defining the target parameter. A list of functions can be
-#'     submitted if the weighting function is in fact a spline. The
-#'     arguments of the function should be variable names in
-#'     \code{data}. If the weight is constant across all observations,
-#'     then the user can instead submit the value of the weight
-#'     instead of a function.
-#' @param target.knots0 user-defined set of functions defining the
-#'     knots associated with splines weights for the control
-#'     group. The arguments of the function should consist only of
-#'     variable names in \code{data}. If the knot is constant across
-#'     all observations, then the user can instead submit the value of
-#'     the weight instead of a function.
-#' @param target.knots1 user-defined set of functions defining the
-#'     knots associated with splines weights for the treated
-#'     group. The arguments of the function should be variable names
-#'     in \code{data}. If the knot is constant across all
-#'     observations, then the user can instead submit the value of the
-#'     weight instead of a function.
 #' @param late.Z vector of variable names used to define the LATE.
 #' @param late.from baseline set of values of Z used to define the
 #'     LATE.
@@ -1879,159 +2405,163 @@ boundPValue <- function(ci, bound, bound.resamples, n, m, levels,
 #'     condition on when defining the LATE.
 #' @param eval.X numeric vector of the values at which we condition
 #'     variables in \code{late.X} on when estimating the LATE.
-#' @param genlate.lb lower bound value of unobservable u for
-#'     estimating generalized LATE.
-#' @param genlate.ub upper bound value of unobservable u for
-#'     estimating generalized LATE.
-#' @param obseq.tol threshold for violation of observational
-#'     equivalence. The threshold enters in multiplicatively. Thus, a
-#'     value of 0 corresponds to no violation of observational
-#'     equivalence other than statistical noise, and the assumption
-#'     that the model is correctly specified.
-#' @param grid.nu number of evenly spread points in the interval [0,
-#'     1] of the unobservable u used to form the grid for imposing
-#'     shape restrictions on the MTRs.
-#' @param grid.nx number of evenly spread points of the covariates to
-#'     use to form the grid for imposing shape restrictions on the
-#'     MTRs.
-#' @param audit.nx number of points on the covariates space to audit
-#'     in each iteration of the audit procedure.
-#' @param audit.nu number of points in the interval [0, 1],
-#'     corresponding to the normalized value of the unobservable term,
-#'     to audit in each iteration of the audit procedure.
-#' @param audit.max maximum number of iterations in the audit
-#'     procedure.
-#' @param audit.tol tolerance for determining when to end the audit
-#'     procedure.
-#' @param m1.ub numeric value for upper bound on MTR for treated
-#'     group. By default, this will be set to the largest value of the
-#'     observed outcome in the estimation sample.
-#' @param m0.ub numeric value for upper bound on MTR for control
-#'     group. By default, this will be set to the largest value of the
-#'     observed outcome in the estimation sample.
-#' @param m1.lb numeric value for lower bound on MTR for treated
-#'     group. By default, this will be set to the smallest value of
-#'     the observed outcome in the estimation sample.
-#' @param m0.lb numeric value for lower bound on MTR for control
-#'     group. By default, this will be set to the smallest value of
-#'     the observed outcome in the estimation sample.
-#' @param mte.ub numeric value for upper bound on treatment effect
-#'     paramter of interest.
-#' @param mte.lb numeric value for lower bound on treatment effect
-#'     paramter of interest.
-#' @param m0.dec logical, equal to TRUE if we want MTR for control
-#'     group to be weakly monotone decreasing.
-#' @param m0.inc logical, equal to TRUE if we want MTR for control
-#'     group to be weakly monotone increasing.
-#' @param m1.dec logical, equal to TRUE if we want MTR for treated
-#'     group to be weakly monotone decreasing.
-#' @param m1.inc logical, equal to TRUE if we want MTR for treated
-#'     group to be weakly monotone increasing.
-#' @param mte.dec logical, equal to TRUE if we want the MTE to be
-#'     weakly monotone decreasing.
-#' @param mte.inc logical, equal to TRUE if we want the MTE to be
-#'     weakly monotone decreasing.
-#' @param lpsolver name of the linear programming package in R used to
-#'     obtain the bounds on the treatment effect.
-#' @param point boolean, default set to \code{FALSE}. Set to
-#'     \code{TRUE} if it is believed that the treatment effects are
-#'     point identified. If set to \code{TRUE}, then a GMM procedure
-#'     is implemented to estimate the treatment effects. Shape
-#'     constraints on the MTRs will be ignored under point
-#'     identification.
-#' @param noisy boolean, default set to \code{TRUE}. If \code{TRUE},
-#'     then messages are provided throughout the estimation
-#'     procedure. Set to \code{FALSE} to suppress all messages,
-#'     e.g. when performing the bootstrap.
-#' @param seed integer, the seed that determines the random grid
-#'     in the audit procedure.
+#' @param audit.grid list, contains the A A matrix used in the audit
+#'     for the original sample, as well as the RHS vector used in the
+#'     audit from the original sample.
+#' @param save.grid boolean, set to \code{FALSE} by default. Set to
+#'     true if the fine grid from the audit should be saved. This
+#'     option is used for inference procedure under partial
+#'     identification, which uses the fine grid from the original
+#'     sample in all bootstrap resamples.
+#' @param point.center numeric, a vector of GMM moment conditoins
+#'     evaluated at a solution. When bootstrapping, the moment
+#'     conditions from the original sample can be passed through this
+#'     argument to recenter the bootstrap distribution of the
+#'     J-statistic.
+#' @param point.redundant vector of integers indicating which
+#'     components in the S-set are redundant.
+#' @param count.moments boolean, indicate if number of linearly
+#'     independent moments should be counted.
+#' @param orig.sset list, only used for bootstraps. The list caontains
+#'     the gamma moments for each element in the S-set, as well as the
+#'     IV-like coefficients.
+#' @param orig.criterion numeric, only used for bootstraps. The scalar
+#'     corresponds to the minimum observational equivalence criterion
+#'     from the original sample.
+#' @param vars_y character, variable name of observed outcome
+#'     variable.
+#' @param vars_mtr character, vector of variables entering into
+#'     \code{m0} and \code{m1}.
+#' @param terms_mtr0 character, vector of terms entering into
+#'     \code{m0}.
+#' @param terms_mtr1 character, vector of terms entering into
+#'     \code{m1}.
+#' @param vars_data character, vector of variables that can be found
+#'     in the data.
+#' @param splinesobj list of spline components in the MTRs for treated
+#'     and control groups. Spline terms are extracted using
+#'     \code{\link{removeSplines}}. This object is supposed to be a
+#'     dictionary of splines, containing the original calls of each
+#'     spline in the MTRs, their specifications, and the index used
+#'     for renaming each component.
+#' @param environments a list containing the environments of the MTR
+#'     formulas, the IV-like formulas, and the propensity score
+#'     formulas. If a formulas is not provided, and thus no
+#'     environment can be found, then the parent.frame() is assigned
+#'     by default.
+#'
+#' @inheritParams ivmte
+#'
 #' @return Returns a list of results from throughout the estimation
 #'     procedure. This includes all IV-like estimands; the propensity
 #'     score model; bounds on the treatment effect; the estimated
 #'     expectations of each term in the MTRs; the components and
 #'     results of the LP problem.
-ivmteEstimate <- function(ivlike, data, subset, components,
-                          propensity, link = "logit", treat, m0, m1,
-                          vars_y, vars_mtr, terms_mtr0, terms_mtr1,
-                          splinesobj, uname = u, target,
+# @export
+ivmteEstimate <- function(data, target, late.Z, late.from, late.to,
+                          late.X, eval.X, genlate.lb, genlate.ub,
                           target.weight0, target.weight1,
                           target.knots0 = NULL, target.knots1 = NULL,
-                          late.Z, late.from, late.to, late.X, eval.X,
-                          genlate.lb, genlate.ub, obseq.tol = 0.05,
-                          grid.nu = 20, grid.nx = 20, audit.nx = 20,
-                          audit.nu = 20, audit.max = 10,
-                          audit.tol = 1e-08, m1.ub, m0.ub, m1.lb,
+                          m0, m1, uname = u, m1.ub, m0.ub, m1.lb,
                           m0.lb, mte.ub, mte.lb, m0.dec, m0.inc,
-                          m1.dec, m1.inc, mte.dec, mte.inc,
-                          lpsolver = NULL, point = FALSE,
-                          noisy = TRUE, seed = 12345 ) {
-
+                          m1.dec, m1.inc, mte.dec, mte.inc, ivlike,
+                          components, subset, propensity,
+                          link = "logit", treat, lpsolver,
+                          criterion.tol = 0, initgrid.nx = 20,
+                          initgrid.nu = 20, audit.nx = 2500,
+                          audit.nu = 25, audit.add = 100,
+                          audit.max = 25, audit.grid = NULL,
+                          save.grid = FALSE,
+                          point = FALSE,
+                          point.eyeweight = FALSE,
+                          point.center = NULL, point.redundant = NULL,
+                          count.moments = TRUE,
+                          orig.sset = NULL,
+                          orig.criterion = NULL, vars_y,
+                          vars_mtr, terms_mtr0, terms_mtr1, vars_data,
+                          splinesobj, noisy = TRUE,
+                          smallreturnlist = FALSE, seed = 12345,
+                          debug = FALSE, environments) {
     call <- match.call(expand.dots = FALSE)
-
     if (classFormula(ivlike)) ivlike <- c(ivlike)
-
     ## Character arguments will be converted to lowercase
     if (hasArg(lpsolver)) lpsolver <- tolower(lpsolver)
     if (hasArg(target))   target   <- tolower(target)
     if (hasArg(link))     link     <- tolower(link)
     if (hasArg(ci.type))  ci.type  <- tolower(ci.type)
+    ## Convert uname into a string
+    uname <- deparse(substitute(uname))
+    uname <- gsub("~", "", uname)
+    uname <- gsub("\\\"", "", uname)
 
+    if (noisy == TRUE && hasArg(lpsolver)) {
+        if (lpsolver == "gurobi") cat("\nLP solver: Gurobi ('gurobi')\n\n")
+        if (lpsolver == "cplexapi") cat("\nLP solver: CPLEX ('cplexAPI')\n\n")
+        if (lpsolver == "lpsolveapi") {
+            cat("\nLP solver: lp_solve ('lpSolveAPI')\n\n")
+            warning(gsub("\\s+", " ",
+                     "The R package 'lpSolveAPI' interfaces with 'lp_solve',
+                      which is outdated and potentially unreliable. It is
+                      recommended to use commercial solvers
+                      Gurobi (lpsolver = 'gurobi')
+                      or CPLEX (lpsolver = 'cplexAPI') instead.
+                      Free academic licenses can be obtained for these
+                      commercial solvers."),
+                "\n", call. = FALSE, immediate. = TRUE)
+        }
+
+    }
 
     ##---------------------------
     ## 1. Obtain propensity scores
     ##---------------------------
-
     if (noisy == TRUE) {
-        message("Obtaining propensity scores...")
+        cat("Obtaining propensity scores...\n")
     }
-
     ## Estimate propensity scores
-
     pcall <- modcall(call,
                      newcall = propensity,
                      keepargs = c("link", "late.Z", "late.X"),
                      dropargs = "propensity",
                      newargs = list(data = quote(data),
-                                    formula = propensity))
+                                    formula = propensity,
+                                    env = environments$propensity))
     pmodel <- eval(pcall)
 
     ##---------------------------
     ## 2. Generate target moments/gamma terms
     ##---------------------------
-
     if (noisy == TRUE) {
-        message("Generating target moments...")
+        cat("\nGenerating target moments...\n")
     }
-
     ## Parse polynomials
     if (!is.null(m0)) {
         m0call <- modcall(call,
                           newcall = polyparse,
                           keepargs = c("uname"),
                           newargs = list(formula = m0,
-                                         data = quote(data)))
+                                         data = quote(data),
+                                         env = quote(environments$m0)))
         pm0 <- eval(as.call(m0call))
     } else {
         pm0 <- NULL
     }
-
     if (!is.null(m1)) {
         m1call <- modcall(call,
                           newcall = polyparse,
                           keepargs = c("uname"),
                           newargs = list(formula = m1,
-                                         data = quote(data)))
+                                         data = quote(data),
+                                         env = quote(environments$m1)))
         pm1 <- eval(as.call(m1call))
     } else {
         pm1 <- NULL
     }
-
     ## Generate target weights
     if (!hasArg(target.weight0) & !hasArg(target.weight1)) {
         target.weight0 <- NULL
         target.weight1 <- NULL
     }
-
     if (is.null(target.weight0) & is.null(target.weight1)) {
         gentargetcall <- modcall(call,
                                  newcall = genTarget,
@@ -2040,15 +2570,13 @@ ivmteEstimate <- function(ivlike, data, subset, components,
                                               "late.from", "late.to",
                                               "late.X", "eval.X",
                                               "genlate.lb",
-                                              "genlate.ub",
-                                              "uname", "splinesobj",
+                                              "genlate.ub", "splinesobj",
                                               "point", "noisy"),
                                  dropargs = "data",
                                  newargs = list(data = quote(data),
                                                 pmodobj = pmodel,
                                                 pm0 = quote(pm0),
                                                 pm1 = quote(pm1)))
-
     } else {
         gentargetcall <- modcall(call,
                                  newcall = genTarget,
@@ -2056,7 +2584,7 @@ ivmteEstimate <- function(ivlike, data, subset, components,
                                               "target.weight0",
                                               "target.weight1",
                                               "target.knots0", "target.knots1",
-                                              "uname", "splinesobj",
+                                              "splinesobj",
                                               "point", "noisy"),
                                  dropargs = "data",
                                  newargs = list(data = quote(data),
@@ -2064,7 +2592,6 @@ ivmteEstimate <- function(ivlike, data, subset, components,
                                                 pm0 = quote(pm0),
                                                 pm1 = quote(pm1)))
     }
-
     targetGammas <- eval(gentargetcall)
     gstar0 <- targetGammas$gstar0
     gstar1 <- targetGammas$gstar1
@@ -2072,32 +2599,42 @@ ivmteEstimate <- function(ivlike, data, subset, components,
     ##---------------------------
     ## 3. Generate moments/gamma terms for IV-like estimands
     ##---------------------------
-
     if (noisy == TRUE) {
-        message("Generating IV-like moments...")
+        cat("\nGenerating IV-like moments...\n")
     }
-
     sset  <- list() ## Contains all IV-like estimates and their
                     ## corresponding moments/gammas
     scount <- 1     ## counter for S-set constraints
-
+    subsetIndexList <- list()
     if (classList(ivlike)) {
         ## Construct `sset' object when multiple IV-like
         ## specifications are provided
-
-        ## loop across IV specifications
         ivlikeCounter <- 1
+        ivlikeD <- NULL
         for (i in 1:length(ivlike)) {
-
             sformula   <- ivlike[[i]]
+            if (all(length(Formula::as.Formula(sformula)) == c(1, 1))) {
+                if (treat %in% all.vars(Formula::as.Formula(sformula)[[3]])) {
+                    ivlikeD <- c(ivlikeD, TRUE)
+                } else {
+                    ivlikeD <- c(ivlikeD, FALSE)
+                }
+            }
+            if (all(length(Formula::as.Formula(sformula)) == c(1, 2))) {
+                if (treat %in%
+                    all.vars(Formula::as.Formula(sformula)[[3]][[2]])) {
+                    ivlikeD <- c(ivlikeD, TRUE)
+                } else {
+                    ivlikeD <- c(ivlikeD, FALSE)
+                }
+            }
+            environment(sformula) <- environments$ivlike
             scomponent <- components[[i]]
-
             if (subset[[i]] == "") {
                 ssubset <- replicate(nrow(data), TRUE)
             } else {
                 ssubset <- subset[[i]]
             }
-
             ## Obtain coefficient estimates and S-weights
             ## corresponding to the IV-like estimands
             sdata <- data[eval(substitute(ssubset), data), ]
@@ -2107,93 +2644,200 @@ ivmteEstimate <- function(ivlike, data, subset, components,
                                 treat = treat,
                                 list = TRUE,
                                 order = ivlikeCounter)
-            ivlikeCounter <- ivlikeCounter + 1
-
             ## Generate moments (gammas) corresponding to IV-like
             ## estimands
             subset_index <- rownames(sdata)
-            ncomponents <- length(sest$betas)
-            pmodobj <- pmodel$phat[subset_index]
-            if (point == FALSE) {
-                setobj <- genSSet(data = data,
-                                  sset = sset,
-                                  sest = sest,
-                                  splinesobj = splinesobj,
-                                  pmodobj = pmodobj,
-                                  pm0 = pm0,
-                                  pm1 = pm1,
-                                  ncomponents = ncomponents,
-                                  scount = scount,
-                                  subset_index = subset_index,
-                                  noisy = noisy)
+            if (length(subset_index) == nrow(data)) {
+                subsetIndexList[[ivlikeCounter]] <- NA
             } else {
-                setobj <- genSSet(data = data,
-                                  sset = sset,
-                                  sest = sest,
-                                  splinesobj = splinesobj,
-                                  pmodobj = pmodobj,
-                                  pm0 = pm0,
-                                  pm1 = pm1,
-                                  ncomponents = ncomponents,
-                                  scount = scount,
-                                  subset_index = subset_index,
-                                  means = FALSE,
-                                  yvar = vars_y,
-                                  dvar = treat,
-                                  noisy = noisy)
+                subsetIndexList[[ivlikeCounter]] <- as.integer(subset_index)
             }
-
+            ncomponents <- sum(!is.na(sest$betas))
+            pmodobj <- pmodel$phat[subset_index]
+            setobj <- genSSet(data = data,
+                              sset = sset,
+                              sest = sest,
+                              splinesobj = splinesobj,
+                              pmodobj = pmodobj,
+                              pm0 = pm0,
+                              pm1 = pm1,
+                              ncomponents = ncomponents,
+                              scount = scount,
+                              subset_index = subset_index,
+                              means = FALSE,
+                              yvar = vars_y,
+                              dvar = treat,
+                              noisy = noisy,
+                              ivn = ivlikeCounter,
+                              redundant = point.redundant)
             ## Update set of moments (gammas)
             sset <- setobj$sset
             scount <- setobj$scount
+            ivlikeCounter <- ivlikeCounter + 1
         }
     } else {
         stop(gsub("\\s+", " ",
                   "'ivlike' argument must either be a formula or a vector of
-                  formulas."))
+                  formulas."),
+             call. = FALSE)
     }
-
+    if (count.moments) {
+        gn0 <- ncol(sset$s1$g0)
+        gn1 <- ncol(sset$s1$g1)
+        mm <- momentMatrix(sset, gn0, gn1, subsetIndexList, nrow(data))
+        mlist <- (seq(length(sset)) - 1) * (gn0 + gn1 + 1) + 1
+        altmm <- matrix(t(mm[, -mlist]), byrow = TRUE, ncol = (gn0 + gn1))
+        altmean <- Matrix::Matrix(t(rep(1, nrow(mm)) %x% diag(length(sset))),
+                                  sparse = TRUE)
+        xmat <- matrix(altmean %*% altmm / nrow(mm), ncol = (gn0 + gn1))
+        ymat <- colMeans(mm[, mlist])
+        ## Address collinear moments
+        colDrop <- NULL
+        theta <- rnorm(gn0 + gn1) ## Random theta, to test for collinearity
+        tmpOmegaMat <- c(t(mm[, mlist]))
+        tmpOmegaMat <- tmpOmegaMat - altmm %*% theta
+        tmpOmegaMat <- matrix(tmpOmegaMat, byrow = TRUE, ncol = length(sset))
+        tmpOmegaMat <- t(tmpOmegaMat) %*% tmpOmegaMat / nrow(mm)
+        rankCheck <- eigen(tmpOmegaMat)
+        if (any(abs(rankCheck$values) < 1e-08)) {
+            colDict <- list()
+            colDrop <- seq(ncol(tmpOmegaMat))
+            colnames(tmpOmegaMat) <- seq(ncol(tmpOmegaMat))
+            while (any(abs(rankCheck$values) < 1e-08)) {
+                colPos <- which(abs(rankCheck$values) < 1e-08)[1]
+                colVec <- rankCheck$vectors[, colPos]
+                colSeq <- which(abs(colVec) > 1e-08)
+                colDropIndex <- max(colSeq)
+                tmpOmegaMat <- tmpOmegaMat[-colDropIndex, -colDropIndex]
+                rankCheck <- eigen(tmpOmegaMat)
+            }
+            colDrop <- which(! colDrop %in% colnames(tmpOmegaMat))
+        }
+        ## Check number of linearly independent moments
+        nIndepMoments <- length(sset) - length(colDrop)
+        if (noisy == TRUE) cat("    Independent moments:", nIndepMoments, "\n")
+        if (nIndepMoments < length(sset) && !all(ivlikeD)) {
+            warning(gsub("\\s+", " ",
+                         paste0("The following IV-like specifications do not
+                            include the treatment variable: ",
+                            paste(which(!ivlikeD), collapse = ", "),
+                            ". This may result in fewer
+                            independent moment conditions than expected.")),
+                    call. = FALSE)
+        }
+    } else {
+        nIndepMoments <- NULL
+    }
+    ## Construct gamma moments
+    if (point == FALSE) {
+        for (s in 1:length(sset)) {
+            sset[[s]]$g0 <- colMeans(sset[[s]]$g0)
+            sset[[s]]$g1 <- colMeans(sset[[s]]$g1)
+            sset[[s]]$ys <- NULL
+        }
+    }
+    ## An alternative way to count moments.
+    ## momentMatrix <- NULL
+    ## for (s in 1:length(sset)) {
+    ##     if (!is.null(subsetIndexList)) {
+    ##         momentMatrixTmp <- rep(0,  times = 2 * nrow(data))
+    ##         if (!is.integer(subsetIndexList[[sset[[s]]$ivspec]])) {
+    ##             momentMatrixTmp <- c(sset[[s]]$w0$multiplier,
+    ##                                  sset[[s]]$w1$multiplier)
+    ##         } else {
+    ##             momentMatrixTmp[c(subsetIndexList[[sset[[s]]$ivspec]],
+    ##                               nrow(data) +
+    ##                               subsetIndexList[[sset[[s]]$ivspec]])] <-
+    ##                 c(sset[[s]]$w0$multiplier, sset[[s]]$w1$multiplier)
+    ##         }
+    ##     } else {
+    ##         momentMatrixTmp <- c(sset[[s]]$w0$multiplier,
+    ##                              sset[[s]]$w1$multiplier)
+    ##     }
+    ##     momentMatrix <- cbind(momentMatrix, momentMatrixTmp)
+    ## }
+    ## nIndepMoments <- qr(momentMtarix)$rank
+    if (!is.null(point.redundant)) point.redundant <- 0
+    ## If bootstrapping, check that length of sset is equivalent in
+    ## length to that of the original sset if bootstrapping
+    if (!is.null(orig.sset)) {
+        if (length(sset) != length(orig.sset)) {
+            return("collinearity causing S-set to differ from original sample")
+        }
+    }
     ## Prepare GMM estimate estimate if `point' agument is set to TRUE
+    splinesCheck <- !(all(is.null(splinesobj[[1]]$splineslist)) &&
+        all(is.null(splinesobj[[2]]$splineslist)))
     if (point == TRUE) {
         ## Obtain GMM estimate
         gmmResult <- gmmEstimate(sset = sset,
                                  gstar0 = gstar0,
                                  gstar1 = gstar1,
+                                 center = point.center,
+                                 identity = point.eyeweight,
+                                 redundant = point.redundant,
+                                 subsetList = subsetIndexList,
+                                 n = nrow(data),
+                                 nMoments = nIndepMoments,
+                                 splines = splinesCheck,
                                  noisy = noisy)
-        return(list(sset  = sset,
-                    gstar = list(g0 = gstar0,
-                                 g1 = gstar1),
-                    propensity = pmodel,
-                    pointestimate = gmmResult$pointestimate,
-                    bounds = c(gmmResult$pointestimate,
-                               gmmResult$pointestimate),
-                    mtr.coef = gmmResult$coef))
+        if (!smallreturnlist) {
+            return(list(sset  = sset,
+                        gstar = list(g0 = colMeans(gstar0),
+                                     g1 = colMeans(gstar1)),
+                        propensity = pmodel,
+                        pointestimate = gmmResult$pointestimate,
+                        moments = gmmResult$moments,
+                        redundant = gmmResult$redundant,
+                        jtest = gmmResult$jtest,
+                        mtr.coef = gmmResult$coef))
+        } else {
+            sset <- lapply(sset, function(x) {
+                output <- list()
+                output$ivspec <- x$ivspec
+                output$beta <- x$beta
+                output$g0 <- colMeans(x$g0)
+                output$g1 <- colMeans(x$g1)
+                return(output)
+            })
+            output <- list(sset = sset,
+                           gstar = list(g0 = colMeans(gstar0),
+                                        g1 = colMeans(gstar1)),
+                           pointestimate = gmmResult$pointestimate,
+                           moments = gmmResult$moments,
+                           redundant = gmmResult$redundant,
+                           jtest = gmmResult$jtest,
+                           mtr.coef = gmmResult$coef)
+            if (all(class(pmodel$model) != "NULL")) {
+                output$propensity.coef <- pmodel$model$coef
+            }
+            return(output)
+        }
     }
 
     ##---------------------------
     ## 4. Define constraint matrices using the audit
     ##---------------------------
-
     if (noisy == TRUE) {
-        if (obseq.tol > 0) {
-            message("Performing audit procedure...")
-        }
+        cat("\nPerforming audit procedure...\n")
     }
-
-    audit.args <- c("uname", "grid.nu", "grid.nx",
-                    "audit.nx", "audit.nu", "audit.max", "audit.tol",
+    audit.args <- c("uname", "vars_data",
+                    "initgrid.nu", "initgrid.nx",
+                    "audit.nx", "audit.nu", "audit.add",
+                    "audit.max", "audit.grid", "save.grid",
                     "m1.ub", "m0.ub",
                     "m1.lb", "m0.lb",
                     "mte.ub", "mte.lb", "m0.dec",
                     "m0.inc", "m1.dec", "m1.inc", "mte.dec",
-                    "mte.inc", "obseq.tol", "noisy", "seed")
-
+                    "mte.inc", "criterion.tol",
+                    "orig.sset", "orig.criterion",
+                    "noisy", "seed", "debug")
     audit_call <- modcall(call,
                           newcall = audit,
                           keepargs = audit.args,
                           newargs = list(data = quote(data),
-                                         m0   = quote(m0),
-                                         m1   = quote(m1),
+                                         m0 = quote(m0),
+                                         m1 = quote(m1),
                                          splinesobj = quote(splinesobj),
                                          vars_mtr = quote(vars_mtr),
                                          terms_mtr0 = quote(terms_mtr0),
@@ -2202,7 +2846,6 @@ ivmteEstimate <- function(ivlike, data, subset, components,
                                          gstar0 = quote(gstar0),
                                          gstar1 = quote(gstar1),
                                          lpsolver = quote(lpsolver)))
-
     ## Impose default upper and lower bounds on m0 and m1
     if (!hasArg(m1.ub) | !hasArg(m0.ub)) {
         maxy <- max(data[, vars_y])
@@ -2230,35 +2873,148 @@ ivmteEstimate <- function(ivlike, data, subset, components,
                                                  m0.lb.default = TRUE))
         }
     }
+    if (!hasArg(mte.lb) | !hasArg(mte.ub)) {
+        tmp.m0.lb <- as.list(audit_call)$m0.lb
+        tmp.m0.ub <- as.list(audit_call)$m0.ub
+        tmp.m1.lb <- as.list(audit_call)$m1.lb
+        tmp.m1.ub <- as.list(audit_call)$m1.ub
+        if (!hasArg(mte.lb)) {
+            audit_call <- modcall(audit_call,
+                                  newargs = list(mte.lb = tmp.m1.lb - tmp.m0.ub,
+                                                 mte.lb.default = TRUE))
+        }
+        if (!hasArg(mte.ub)) {
+            audit_call <- modcall(audit_call,
+                                  newargs = list(mte.ub = tmp.m1.ub - tmp.m0.lb,
+                                                 mte.ub.default = TRUE))
+        }
+    }
 
     ##---------------------------
     ## 5. Obtain the bounds
     ##---------------------------
-
-    audit <- eval(audit_call)
-
-    if (noisy) {
-        message(paste0("Bounds on the target parameter: [",
-                       fmtResult(audit$min), ", ", fmtResult(audit$max), "]\n"))
+    autoExpand <- 0
+    autoExpandMax <- 3
+    newGrid.nu <- initgrid.nu
+    newGrid.nx <- initgrid.nx
+    while(autoExpand <= autoExpandMax) {
+        audit <- eval(audit_call)
+        if (is.list(audit)) {
+            autoExpand <- Inf
+        }
+        if (!is.list(audit) && audit == "Failure to maximize/minimize.") {
+            autoExpand <- autoExpand + 1
+            newGrid.nu <- min(ceiling(newGrid.nu * 1.5), audit.nu)
+            newGrid.nx <- min(ceiling(newGrid.nx * 1.5), audit.nx)
+            audit_call <-
+                modcall(audit_call,
+                        dropargs = c("initgrid.nu", "initgrid.nx"),
+                        newargs = list(initgrid.nu = newGrid.nu,
+                                       initgrid.nx = newGrid.nx))
+            if (newGrid.nu == audit.nu && newGrid.nx == audit.nx) {
+                autoExpand <- autoExpandMax
+            }
+            if (autoExpand == autoExpandMax) {
+                autoExpand <- Inf
+                audit <- eval(audit_call)
+            }
+        }
     }
 
+    if (!is.list(audit) && autoExpand > autoExpandMax) {
+        cat("\n\n")
+        stop(paste0(gsub("\\s+", " ",
+                         "Automatic grid expansion limit reached.
+                         The LP problem is still unbounded.
+                         Either impose additional shape constraints,
+                         or increase the size of the initial grid
+                         for the audit. Since the initial grid must
+                         be a subset of the audit grid, it may be
+                         necessary to increase the size of the audit
+                         grid also.
+                         The most recent options after automatic expansion
+                         were:"),
+                    "\ninitgrid.nx = ", newGrid.nx,
+                    "\ninitgrid.nu = ", newGrid.nu,
+                    "\naudit.nx = ", audit.nx,
+                    "\naudit.nu = ", audit.nu),
+             call. = FALSE)
+    }
+    if (noisy) {
+        cat("Bounds on the target parameter: [",
+            fmtResult(audit$min), ", ", fmtResult(audit$max), "]\n\n", sep = "")
+        ## if (any(audit$lpresult$modelstats[, 3] > 6)) {
+        ##     bMessage <- "The following sets of coefficients defining the
+        ##             LP problem exhibit ranges exceeding 6 orders of magnitude: "
+        ##     if (audit$lpresult$modelstats[1, 3] > 6) {
+        ##         bMessage <- paste(bMessage, "constraint matrix")
+        ##     }
+        ##     if (audit$lpresult$modelstats[2, 3] > 6) {
+        ##         bMessage <- paste(bMessage, "RHS vector (IV-like coefficients)")
+        ##     }
+        ##     if (audit$lpresult$modelstats[3, 3] > 6) {
+        ##         bMessage <- paste(bMessage, "objective vector (gamma moments)")
+        ##     }
+        ##     bMessage <- paste0(bMessage, ". Large ranges in the coefficients
+        ##                                  increase computational burden, and can
+        ##                                  potentially lead to infeasibility.")
+        ##     warning(gsub("\\s+", " ", bMessage),
+        ##             call. = FALSE, immediate. = TRUE)
+        ## }
+    }
     ## include additional output material
-    return(list(sset  = sset,
-                gstar = list(g0 = gstar0,
-                             g1 = gstar1),
-                propensity = pmodel,
-                pointestimate = NULL,
-                bounds = c(audit$min, audit$max),
-                lpresult =  audit$lpresult,
-                ## poly0 = pm0,
-                ## poly1 = pm1,
-                auditgrid = audit$gridobj,
-                auditcount = audit$auditcount,
-                minobseq = audit$minobseq,
-                splinesdict = list(splinesobj[[1]]$splinesdict,
-                                   splinesobj[[2]]$splinesdict)))
+    if (lpsolver == "gurobi") lpsolver <- "Gurobi ('gurobi')"
+    if (lpsolver == "lpsolveapi") lpsolver <- "lp_solve ('lpSolveAPI')"
+    if (lpsolver == "cplexapi") lpsolver <- "CPLEX ('cplexAPI')"
+    if (!smallreturnlist) {
+        output <- list(sset  = sset,
+                       gstar = list(g0 = gstar0,
+                                    g1 = gstar1,
+                                 n = targetGammas$n),
+                       gstar.weights = list(w0 = targetGammas$w0,
+                                         w1 = targetGammas$w1),
+                       gstar.coef = list(min.g0 = audit$lpresult$ming0,
+                                         max.g0 = audit$lpresult$maxg0,
+                                         min.g1 = audit$lpresult$ming1,
+                                         max.g1 = audit$lpresult$maxg1),
+                       propensity = pmodel,
+                       bounds = c(audit$min, audit$max),
+                       lpresult =  audit$lpresult,
+                       lpsolver = lpsolver,
+                       indep.moments = nIndepMoments,
+                       audit.grid = list(initial = audit$gridobj$initial$grid,
+                                         audit = audit$gridobj$audit$grid,
+                                         violations = audit$gridobj$violations),
+                       audit.count = audit$auditcount,
+                       audit.criterion = audit$minobseq,
+                       splinesdict = list(m0 = splinesobj[[1]]$splinesdict,
+                                          m1 = splinesobj[[2]]$splinesdict))
+    } else {
+        sset <- lapply(sset, function(x) {
+            x[c("ivspec", "beta", "g0", "g1")]
+        })
+        output <- list(sset  = sset,
+                       gstar = list(g0 = gstar0,
+                                    g1 = gstar1),
+                       gstarcoef = list(ming0 = audit$ming0,
+                                        maxg0 = audit$maxg0,
+                                        ming1 = audit$ming1,
+                                        maxg1 = audit$maxg1),
+                       bounds = c(audit$min, audit$max),
+                       lpsolver = lpsolver,
+                       indep.moments = nIndepMoments,
+                       audit.count = audit$auditcount,
+                       audit.criterion = audit$minobseq,
+                       splinesdict = list(m0 = splinesobj[[1]]$splinesdict,
+                                          m1 = splinesobj[[2]]$splinesdict))
+        if (all(class(pmodel$model) != "NULL")) {
+            output$propensity.coef <- pmodel$model$coef
+        }
+    }
+    if (save.grid) output$audit.grid$a_mbobj <- audit$gridobj$a_mbobj
+    if (!is.null(audit$spectest)) output$specification.test <- audit$spectest
+    return(output)
 }
-
 
 
 #' Generating LP moments for IV-like estimands
@@ -2268,66 +3024,6 @@ ivmteEstimate <- function(ivlike, data, subset, components,
 #' point estimate, and the corresponding moments (gammas) that will
 #' enter into the constraint matrix of the LP problem.
 #'
-#' @param treat variable name for treatment indicator
-#' @param m0 one-sided formula for marginal treatment response
-#'     function for control group. Splines can also be incorporated
-#'     using the expression "uSplines(degree, knots, intercept)". The
-#'     'intercept' argument may be omitted, and is set to \code{TRUE}
-#'     by default.
-#' @param m1 one-sided formula for marginal treatment response
-#'     function for treated group. Splines can also be incorporated
-#'     using the expression "uSplines(degree, knots, intercept)". The
-#'     'intercept' argument may be omitted, and is set to \code{TRUE}
-#'     by default.
-#' @param uname variable name for unobservable used in declaring MTRs
-#' @param target target parameter to be estimated. Currently function
-#'     allows for ATE ("\code{ate}"), ATT ("\code{att}"), ATU
-#'     ("\code{atu}"), LATE ("\code{late}"), and generalized LATE
-#'     ("\code{genlate}").
-#' @param target.weight0 user-defined weight function for the control
-#'     group defining the target parameter. A list of functions can be
-#'     submitted if the weighting function is in fact a spline. The
-#'     arguments of the function should be variable names in
-#'     \code{data}. If the weight is constant across all observations,
-#'     then the user can instead submit the value of the weight
-#'     instead of a function.
-#' @param target.weight1 user-defined weight function for the treated
-#'     group defining the target parameter. A list of functions can be
-#'     submitted if the weighting function is in fact a spline. The
-#'     arguments of the function should be variable names in
-#'     \code{data}. If the weight is constant across all observations,
-#'     then the user can instead submit the value of the weight
-#'     instead of a function.
-#' @param target.knots0 user-defined set of functions defining the
-#'     knots associated with splines weights for the control
-#'     group. The arguments of the function should consist only of
-#'     variable names in \code{data}. If the knot is constant across
-#'     all observations, then the user can instead submit the value of
-#'     the weight instead of a function.
-#' @param target.knots1 user-defined set of functions defining the
-#'     knots associated with splines weights for the treated
-#'     group. The arguments of the function should be variable names
-#'     in \code{data}. If the knot is constant across all
-#'     observations, then the user can instead submit the value of the
-#'     weight instead of a function.
-#' @param late.Z vector of variable names used to define the LATE.
-#' @param late.from baseline set of values of Z used to define the
-#'     LATE.
-#' @param late.to comparison set of values of Z used to define the
-#'     LATE.
-#' @param late.X vector of variable names of covariates which we
-#'     condition on when defining the LATE.
-#' @param eval.X numeric vector of the values at which we condition
-#'     variables in \code{late.X} on when estimating the LATE.
-#' @param genlate.lb lower bound value of unobservable u for
-#'     estimating generalized LATE.
-#' @param genlate.ub upper bound value of unobservable u for
-#'     estimating generalized LATE.
-#' @param data \code{data.frame} used to estimate the treatment
-#'     effects.
-#' @param splinesobj list of spline components in the MTRs for treated
-#'     and control groups. Spline terms are extracted using
-#'     \code{\link{removeSplines}}.
 #' @param pmodobj A vector of propensity scores.
 #' @param pm0 A list of the monomials in the MTR for d = 0.
 #' @param pm1 A list of the monomials in the MTR for d = 1.
@@ -2338,10 +3034,9 @@ ivmteEstimate <- function(ivlike, data, subset, components,
 #'     \code{TRUE}, then no sample averages are taken, and a matrix is
 #'     returned. The sample average of each column of the matrix
 #'     corresponds to a particular gamma moment.
-#' @param noisy boolean, default set to \code{TRUE}. If \code{TRUE},
-#'     then messages are provided throughout the estimation
-#'     procedure. Set to \code{FALSE} to suppress all messages,
-#'     e.g. when performing the bootstrap.
+#'
+#' @inheritParams ivmteEstimate
+#'
 #' @return A list containing either the vectors of gamma moments for
 #'     \code{D = 0} and \code{D = 1}, or a matrix of individual gamma
 #'     values for \code{D = 0} and \code{D = 1}. Additoinally, two
@@ -2352,6 +3047,8 @@ ivmteEstimate <- function(ivlike, data, subset, components,
 #'     \code{u} in each term it appears in.
 #'
 #' @examples
+#' dtm <- ivmte:::gendistMosquito()
+#'
 #' ## Declare MTR functions
 #' formula1 = ~ 1 + u
 #' formula0 = ~ 1 + u
@@ -2377,7 +3074,6 @@ ivmteEstimate <- function(ivlike, data, subset, components,
 #' genTarget(treat = "d",
 #'           m0 = ~ 1 + u,
 #'           m1 = ~ 1 + u,
-#'           uname = u,
 #'           target = "atu",
 #'           data = dtm,
 #'           splinesobj = splinesList,
@@ -2388,21 +3084,19 @@ ivmteEstimate <- function(ivlike, data, subset, components,
 #'
 #'
 #' @export
-genTarget <- function(treat, m0, m1, uname, target,
+genTarget <- function(treat, m0, m1, target,
                       target.weight0, target.weight1,
                       target.knots0, target.knots1,
                       late.Z, late.from, late.to, late.X,
                       eval.X, genlate.lb, genlate.ub,
                       data, splinesobj, pmodobj, pm0, pm1,
                       point = FALSE, noisy = TRUE) {
-
+    if (!hasArg(late.X)) {
+        late.X <- NULL
+        eval.X <- NULL
+        lateRows <- NULL
+    }
     if (hasArg(target)) target   <- tolower(target)
-
-    xindex0 <- NULL
-    xindex1 <- NULL
-    uexporder0 <- NULL
-    uexporder1 <- NULL
-
     if (hasArg(target)) {
         if (target == "ate") {
             w1 <- wate1(data)
@@ -2417,95 +3111,129 @@ genTarget <- function(treat, m0, m1, uname, target,
             w0 <- w1
             w0$mp <- -1 * w0$mp
         } else if (target == "late") {
-            if (!hasArg(late.X)) {
-                late.X <- NULL
-                eval.X <- NULL
+            if (!is.null(late.X)) {
+                ## Create index to restrict data to those with the
+                ## correct value of X
+                condX <- mapply(function(a, b) paste(a, "==", b),
+                                late.X, eval.X)
+                condX <- paste(condX, collapse = " & ")
+                lateRows <- eval(parse(text = condX), data)
+                if (sum(lateRows) == 0) {
+                    stop(gsub("\\s+", " ",
+                              "no observations with the values specified in
+                               'eval.X'."), call. = FALSE)
+                }
             }
+            if (!is.null(m0)) pm0$polymat <- pm0$polymat
+            if (!is.null(m1)) pm1$polymat <- pm1$polymat
             w1 <- wlate1(data, late.from, late.to, late.Z,
                          pmodobj$model, late.X, eval.X)
             w0 <- w1
             w0$mp <- -1 * w0$mp
         } else if (target == "genlate") {
+            if (!is.null(late.X)) {
+                ## Create index to restrict data to those with the
+                ## correct value of X
+                condX <- mapply(function(a, b) paste(a, "==", b),
+                                late.X, eval.X)
+                condX <- paste(condX, collapse = " & ")
+                lateRows <- eval(parse(text = condX), data)
+                if (sum(lateRows) == 0) {
+                    stop(gsub("\\s+", " ",
+                              "no observations with the values specified in
+                               'eval.X'."), call. = FALSE)
+                }
+            }
+            if (!is.null(m0)) pm0$polymat <- pm0$polymat
+            if (!is.null(m1)) pm1$polymat <- pm1$polymat
             w1 <- wgenlate1(data, genlate.lb, genlate.ub)
             w0 <- w1
             w0$mp <- -1 * w0$mp
         } else {
-            stop("Unrecognized target parameter.")
+            stop("Unrecognized target parameter.",
+                 call. = FALSE)
         }
-
         ## Integrate m0 and m1 functions
         if (!is.null(m0)) {
             if (noisy == TRUE) {
-                message("    Integrating terms for control group...")
+                cat("    Integrating terms for control group...\n")
             }
             if (point == FALSE) {
-                gstar0 <- genGamma(pm0, w0$lb, w0$ub, w0$mp)
+                gstar0 <- genGamma(monomials = pm0,
+                                   lb = w0$lb,
+                                   ub = w0$ub,
+                                   multiplier = w0$mp,
+                                   late.rows = lateRows)
             } else {
-                gstar0 <- genGamma(pm0, w0$lb, w0$ub, w0$mp, means = FALSE)
-                xindex0 <- c(xindex0, pm0$xindex)
-                uexporder0 <- c(uexporder0, pm0$exporder)
+                gstar0 <- genGamma(monomials = pm0,
+                                   lb = w0$lb,
+                                   ub = w0$ub,
+                                   multiplier = w0$mp,
+                                   means = FALSE,
+                                   late.rows = lateRows)
             }
         } else {
             gstar0 <- NULL
         }
-
         if (!is.null(m1)) {
             if (noisy == TRUE) {
-                message("    Integrating terms for treated group...")
+                cat("    Integrating terms for treated group...\n")
             }
             if (point == FALSE) {
-                gstar1 <- genGamma(pm1, w1$lb, w1$ub, w1$mp)
+                gstar1 <- genGamma(monomials = pm1,
+                                   lb = w1$lb,
+                                   ub = w1$ub,
+                                   multiplier = w1$mp,
+                                   late.rows = lateRows)
             } else {
-                gstar1 <- genGamma(pm1, w1$lb, w1$ub, w1$mp, means = FALSE)
-                xindex1 <- c(xindex1, pm1$xindex)
-                uexporder1 <- c(uexporder1, pm1$exporder)
+                gstar1 <- genGamma(monomials = pm1,
+                                   lb = w1$lb,
+                                   ub = w1$ub,
+                                   multiplier = w1$mp,
+                                   means = FALSE,
+                                   late.rows = lateRows)
             }
         } else {
             gstar1 <- NULL
         }
         if (point == FALSE) {
-            gstarSplineObj0 <- genGammaSplines(splines = splinesobj[[1]],
-                                               data = data,
-                                               lb = w0$lb,
-                                               ub = w0$ub,
-                                               multiplier = w0$mp,
-                                               d = 0)
-            gstarSpline0 <- gstarSplineObj0$gamma
-
-            gstarSplineObj1 <- genGammaSplines(splines = splinesobj[[2]],
-                                               data = data,
-                                               lb = w1$lb,
-                                               ub = w1$ub,
-                                               multiplier = w1$mp,
-                                               d = 1)
-            gstarSpline1 <- gstarSplineObj1$gamma
-        } else {
-            gstarSplineObj0 <- genGammaSplines(splines = splinesobj[[1]],
+            gstarSplineObj0 <- genGammaSplines(splinesobj = splinesobj[[1]],
                                                data = data,
                                                lb = w0$lb,
                                                ub = w0$ub,
                                                multiplier = w0$mp,
                                                d = 0,
-                                               means = FALSE)
+                                               late.rows = lateRows)
             gstarSpline0 <- gstarSplineObj0$gamma
-            xindex0 <- c(xindex0, gstarSplineObj0$interactions)
-            uexporder0 <- c(uexporder0,
-                            rep(-1, length(xindex0) - length(uexporder0)))
-
-            gstarSplineObj1 <- genGammaSplines(splines = splinesobj[[2]],
+            gstarSplineObj1 <- genGammaSplines(splinesobj = splinesobj[[2]],
                                                data = data,
                                                lb = w1$lb,
                                                ub = w1$ub,
                                                multiplier = w1$mp,
                                                d = 1,
-                                               means = FALSE)
+                                               late.rows = lateRows)
             gstarSpline1 <- gstarSplineObj1$gamma
-            xindex1 <- c(xindex1, gstarSplineObj1$interactions)
-            uexporder1 <- c(uexporder1,
-                            rep(-1, length(xindex1) - length(uexporder1)))
+        } else {
+            gstarSplineObj0 <- genGammaSplines(splinesobj = splinesobj[[1]],
+                                               data = data,
+                                               lb = w0$lb,
+                                               ub = w0$ub,
+                                               multiplier = w0$mp,
+                                               d = 0,
+                                               means = FALSE,
+                                               late.rows = lateRows)
+            gstarSpline0 <- gstarSplineObj0$gamma
+            gstarSplineObj1 <- genGammaSplines(splinesobj = splinesobj[[2]],
+                                               data = data,
+                                               lb = w1$lb,
+                                               ub = w1$ub,
+                                               multiplier = w1$mp,
+                                               d = 1,
+                                               means = FALSE,
+                                               late.rows = lateRows)
+            gstarSpline1 <- gstarSplineObj1$gamma
         }
     } else {
-
         ## Convert fixed/numeric weights into functions
         if (is.numeric(target.weight0)) {
             target.weight0 <- sapply(target.weight0, constructConstant)
@@ -2514,7 +3242,6 @@ genTarget <- function(treat, m0, m1, uname, target,
             target.weight0[numeric] <- sapply(unlist(target.weight0[numeric]),
                                               constructConstant)
         }
-
         if (is.numeric(target.weight1)) {
             target.weight1 <- sapply(target.weight1, constructConstant)
         } else {
@@ -2522,7 +3249,6 @@ genTarget <- function(treat, m0, m1, uname, target,
             target.weight1[numeric] <- sapply(unlist(target.weight1[numeric]),
                                               constructConstant)
         }
-
         ## Convert fixed/numeric knots into functions
         if (!is.null(target.knots0)) {
             if (is.numeric(target.knots0)) {
@@ -2533,7 +3259,6 @@ genTarget <- function(treat, m0, m1, uname, target,
                                                  constructConstant)
             }
         }
-
         if (!is.null(target.knots1)) {
             if (is.numeric(target.knots1)) {
                 target.knots1 <- sapply(target.knots1, constructConstant)
@@ -2543,48 +3268,41 @@ genTarget <- function(treat, m0, m1, uname, target,
                                                  constructConstant)
             }
         }
-
         for (d in 0:1) {
-
             mtr <- get(paste0("m", d))
-
             ## Include end points
             splitFirst <- function(...) {
                 0
             }
-
             splitLast <- function(...) {
                 1
             }
-
             target.knots <- c(splitFirst,
                               get(paste0("target.knots", d)),
                               splitLast)
-
             target.weight <- get(paste0("target.weight", d))
-
             ## Integrate non-splines terms
-
             if (!is.null(mtr)) {
                 if (noisy == TRUE) {
                     if (d == 0) {
-                        message(
-                            "    Integrating non-spline terms for control group...")
+                        cat("    ",
+                            gsub("\\s+", " ",
+                                 "Integrating non-spline
+                                  terms for control group..."),
+                            "\n", sep = "")
                     } else {
-                        message(
-                            "    Integrating non-spline terms for treated group...")
+                        cat("    ",
+                            gsub("\\s+", " ",
+                                 "Integrating non-spline
+                                  terms for treated group..."),
+                            "\n", sep = "")
                     }
                 }
-
                 pm <- get(paste0("pm", d))
-
                 gamma <- rep(0, length(pm$terms))
-
                 for(i in 1:length(target.weight)) {
-
                     wKnotVarsL <- formalArgs(target.knots[[i]])
                     wKnotVarsU <- formalArgs(target.knots[[i + 1]])
-
                     if (wKnotVarsL[1] == "...") {
                         lb <- unlist(lapply(X = seq(1, nrow(data)),
                                             FUN = funEval,
@@ -2596,12 +3314,10 @@ genTarget <- function(treat, m0, m1, uname, target,
                                             fun = target.knots[[i]],
                                             argnames = wKnotVarsL))
                     }
-
                     if (wKnotVarsU[1] == "...") {
                         ub <- unlist(lapply(X = seq(1, nrow(data)),
                                             FUN = funEval,
                                             fun = target.knots[[i + 1]]))
-
                     } else {
                         ub <- unlist(lapply(X = split(data[, wKnotVarsU],
                                                       seq(1, nrow(data))),
@@ -2609,9 +3325,7 @@ genTarget <- function(treat, m0, m1, uname, target,
                                             fun = target.knots[[i + 1]],
                                             argnames = wKnotVarsU))
                     }
-
                     wValVars  <- formalArgs(target.weight[[i]])
-
                     if (wValVars[1] == "...") {
                         weights <- unlist(lapply(X = seq(1, nrow(data)),
                                                  FUN = funEval,
@@ -2623,7 +3337,6 @@ genTarget <- function(treat, m0, m1, uname, target,
                                                  fun = target.weight[[i]],
                                                  argnames = wValVars))
                     }
-
                     if (point == FALSE) {
                         gamma <- gamma + genGamma(pm,
                                                   lb = lb,
@@ -2637,36 +3350,26 @@ genTarget <- function(treat, m0, m1, uname, target,
                                                   means = FALSE)
                     }
                 }
-
                 assign(paste0("gstar", d), gamma)
                 assign(paste0("pm", d), pm)
             } else {
                 assign(paste0("gstar", d), NULL)
                 assign(paste0("pm", d), NULL)
             }
-
             ## Integrate splines terms
             if (noisy == TRUE) {
                 if (d == 0) {
-                    message(
-                        "    Integrating spline terms for control group...\n")
-                } else {
-                    message(
-                        "    Integrating spline terms for treated group...\n")
+                    cat("    Integrating spline terms for control group...\n")
+                    } else {
+                    cat("    Integrating spline terms for treated group...\n")
                 }
             }
-
             noSplineMtr <- splinesobj[[d + 1]]
-
             if (!is.null(noSplineMtr$splineslist)) {
-
                 gammaSplines <- 0
-
                 for (i in 1:length(target.weight)) {
-
                     wKnotVarsL <- formalArgs(target.knots[[i]])
                     wKnotVarsU <- formalArgs(target.knots[[i + 1]])
-
                     if (wKnotVarsL[1] == "...") {
                         lb <- unlist(lapply(X = seq(1, nrow(data)),
                                             FUN = funEval,
@@ -2678,12 +3381,10 @@ genTarget <- function(treat, m0, m1, uname, target,
                                             fun = target.knots[[i]],
                                             argnames = wKnotVarsL))
                     }
-
                     if (wKnotVarsU[1] == "...") {
                         ub <- unlist(lapply(X = seq(1, nrow(data)),
                                             FUN = funEval,
                                             fun = target.knots[[i + 1]]))
-
                     } else {
                         ub <- unlist(lapply(X = split(data[, wKnotVarsU],
                                                       seq(1, nrow(data))),
@@ -2691,9 +3392,7 @@ genTarget <- function(treat, m0, m1, uname, target,
                                             fun = target.knots[[i + 1]],
                                             argnames = wKnotVarsU))
                     }
-
                     wValVars  <- formalArgs(target.weight[[i]])
-
                     if (wValVars[1] == "...") {
                         weights <- unlist(lapply(X = seq(1, nrow(data)),
                                                  FUN = funEval,
@@ -2705,11 +3404,9 @@ genTarget <- function(treat, m0, m1, uname, target,
                                                  fun = target.weight[[i]],
                                                  argnames = wValVars))
                     }
-
                     if (point == FALSE) {
-
                         gammaSplines <- gammaSplines +
-                            genGammaSplines(splines = noSplineMtr,
+                            genGammaSplines(splinesobj = noSplineMtr,
                                             data = data,
                                             lb = lb,
                                             ub = ub,
@@ -2717,7 +3414,7 @@ genTarget <- function(treat, m0, m1, uname, target,
                                             d = d)$gamma
                     } else {
                         gammaSplines <- gammaSplines +
-                            genGammaSplines(splines = noSplineMtr,
+                            genGammaSplines(splinesobj = noSplineMtr,
                                             data = data,
                                             lb = lb,
                                             ub = ub,
@@ -2732,7 +3429,6 @@ genTarget <- function(treat, m0, m1, uname, target,
             }
         }
     }
-
     if (point == FALSE) {
         gstar0 <- c(gstar0, gstarSpline0)
         gstar1 <- c(gstar1, gstarSpline1)
@@ -2740,13 +3436,14 @@ genTarget <- function(treat, m0, m1, uname, target,
         gstar0 <- cbind(gstar0, gstarSpline0)
         gstar1 <- cbind(gstar1, gstarSpline1)
     }
-
-    return(list(gstar0 = gstar0,
-                gstar1 = gstar1,
-                xindex0 = xindex0,
-                xindex1 = xindex1,
-                uexporder0 = uexporder0,
-                uexporder1 = uexporder1))
+    output <- list(gstar0 = gstar0,
+                   gstar1 = gstar1)
+    if (hasArg(target)) {
+        output$w1 <- w1
+        output$w0 <- w0
+    }
+    output$n <- nrow(data)
+    return(output)
 }
 
 
@@ -2789,10 +3486,16 @@ genTarget <- function(treat, m0, m1, uname, target,
 #'     then messages are provided throughout the estimation
 #'     procedure. Set to \code{FALSE} to suppress all messages,
 #'     e.g. when performing the bootstrap.
+#' @param ivn integer, the number indicating which IV specification
+#'     the component corresponds to.
+#' @param redundant vector of integers indicating which components in
+#'     the S-set are redundant.
 #' @return A list containing the point estimate for the IV regression,
 #'     and the expectation of each monomial term in the MTR.
 #'
 #' @examples
+#' dtm <- ivmte:::gendistMosquito()
+#'
 #' ## Declare empty list to be updated (in the event multiple IV like
 #' ## specifications are provided)
 #' sSet <- list()
@@ -2843,71 +3546,79 @@ genTarget <- function(treat, m0, m1, uname, target,
 #'
 #' @export
 genSSet <- function(data, sset, sest, splinesobj, pmodobj, pm0, pm1,
-                        ncomponents, scount, subset_index, means = TRUE,
-                        yvar, dvar, noisy = TRUE) {
-
-    if (!hasArg(subset_index)) subset_index <- NULL
-
+                    ncomponents, scount, subset_index, means = TRUE,
+                    yvar, dvar, noisy = TRUE, ivn = NULL,
+                    redundant = NULL) {
+    if (!hasArg(subset_index)) {
+        subset_index <- NULL
+        n <- nrow(data)
+    } else {
+        n <- length(subset_index)
+    }
     for (j in 1:ncomponents) {
-        if (noisy == TRUE) {
-            message(paste0("    Moment ", scount, "..."))
-        }
-
-        if (!is.null(pm0)) {
-            if (means == TRUE) {
-                gs0 <- genGamma(monomials = pm0,
+        if (! scount %in% redundant) {
+            if (noisy == TRUE) {
+                cat("    Moment ", scount, "...\n", sep = "")
+            }
+            if (!is.null(pm0)) {
+                if (means == TRUE) {
+                    gs0 <- genGamma(monomials = pm0,
                                     lb = pmodobj,
                                     ub = 1,
                                     multiplier = sest$sw0[, j],
                                     subset = subset_index)
-            } else {
-                gs0 <- genGamma(monomials = pm0,
+                } else {
+                    gs0 <- genGamma(monomials = pm0,
                                     lb = pmodobj,
                                     ub = 1,
                                     multiplier = sest$sw0[, j],
                                     subset = subset_index,
                                     means = FALSE)
+                }
+            } else {
+                gs0 <- NULL
             }
-        } else {
-            gs0 <- NULL
-        }
-
-        if (!is.null(pm1)) {
-            if (means == TRUE) {
-                gs1 <- genGamma(monomials = pm1,
+            sweight0 <- list(lb = pmodobj,
+                             ub = 1,
+                             multiplier = sest$sw0[, j])
+            if (!is.null(pm1)) {
+                if (means == TRUE) {
+                    gs1 <- genGamma(monomials = pm1,
                                     lb = 0,
                                     ub = pmodobj,
                                     multiplier = sest$sw1[, j],
                                     subset = subset_index)
-            } else {
-                gs1 <- genGamma(monomials = pm1,
+                } else {
+                    gs1 <- genGamma(monomials = pm1,
                                     lb = 0,
                                     ub = pmodobj,
                                     multiplier = sest$sw1[, j],
                                     subset = subset_index,
                                     means = FALSE)
+                }
+            } else {
+                gs1 <- NULL
             }
-        } else {
-            gs1 <- NULL
-        }
-
-        if (means == TRUE) {
-            gsSpline0 <- genGammaSplines(splines = splinesobj[[1]],
-                                         data = data,
-                                         lb = pmodobj,
-                                         ub = 1,
-                                         multiplier = sest$sw0[, j],
-                                         subset = subset_index,
-                                         d = 0)$gamma
-            gsSpline1 <- genGammaSplines(splines = splinesobj[[2]],
-                                         data = data,
-                                         lb = 0,
-                                         ub = pmodobj,
-                                         multiplier = sest$sw1[, j],
-                                         subset = subset_index,
-                                         d = 1)$gamma
-        } else {
-            gsSpline0 <- genGammaSplines(splines = splinesobj[[1]],
+            sweight1 <- list(lb = 0,
+                             ub = pmodobj,
+                             multiplier = sest$sw1[, j])
+            if (means == TRUE) {
+                gsSpline0 <- genGammaSplines(splinesobj = splinesobj[[1]],
+                                             data = data,
+                                             lb = pmodobj,
+                                             ub = 1,
+                                             multiplier = sest$sw0[, j],
+                                             subset = subset_index,
+                                             d = 0)$gamma
+                gsSpline1 <- genGammaSplines(splinesobj = splinesobj[[2]],
+                                             data = data,
+                                             lb = 0,
+                                             ub = pmodobj,
+                                             multiplier = sest$sw1[, j],
+                                             subset = subset_index,
+                                             d = 1)$gamma
+            } else {
+                gsSpline0 <- genGammaSplines(splinesobj = splinesobj[[1]],
                                              data = data,
                                              lb = pmodobj,
                                              ub = 1,
@@ -2915,7 +3626,7 @@ genSSet <- function(data, sset, sest, splinesobj, pmodobj, pm0, pm1,
                                              subset = subset_index,
                                              d = 0,
                                              means = FALSE)$gamma
-            gsSpline1 <- genGammaSplines(splines = splinesobj[[2]],
+                gsSpline1 <- genGammaSplines(splinesobj = splinesobj[[2]],
                                              data = data,
                                              lb = 0,
                                              ub = pmodobj,
@@ -2923,45 +3634,47 @@ genSSet <- function(data, sset, sest, splinesobj, pmodobj, pm0, pm1,
                                              subset = subset_index,
                                              d = 1,
                                              means = FALSE)$gamma
-        }
-
-        ## generate components of constraints
-        if (means == TRUE) {
-            sset[[paste0("s", scount)]] <- list(beta = sest$beta[j],
-                                                g0 = c(gs0, gsSpline0),
-                                                g1 = c(gs1, gsSpline1))
-        } else {
-            ## Now generate the vectors for Y * S(D, Z).
-
-            if (!is.null(subset_index)) {
-                newsubset <- subset_index
-            } else {
-                newsubset <- seq(1, nrow(data))
             }
-
-            yvec <- as.vector(data[newsubset, yvar])
-            dvec <- as.vector(data[newsubset, dvar])
-
-            yvec <- yvec * (sest$sw1[, j] * dvec + sest$sw0[, j] * (1 - dvec))
-
-            names(yvec) <- newsubset
-
-            sset[[paste0("s", scount)]] <- list(beta = sest$beta[j],
-                                                g0 = cbind(gs0, gsSpline0),
-                                                g1 = cbind(gs1, gsSpline1),
-                                                ys = yvec)
+            ## generate components of constraints
+            if (means == TRUE) {
+                sset[[paste0("s", scount)]] <- list(ivspec = ivn,
+                                                    beta = sest$beta[j],
+                                                    g0 = c(gs0, gsSpline0),
+                                                    g1 = c(gs1, gsSpline1),
+                                                    w0 = sweight0,
+                                                    w1 = sweight1,
+                                                    n = n)
+            } else {
+                ## Now generate the vectors for Y * S(D, Z).
+                if (!is.null(subset_index)) {
+                    newsubset <- subset_index
+                } else {
+                    newsubset <- seq(1, nrow(data))
+                }
+                yvec <- as.vector(data[newsubset, yvar])
+                dvec <- as.vector(data[newsubset, dvar])
+                yvec <- yvec * (sest$sw1[, j] * dvec + sest$sw0[, j] *
+                                (1 - dvec))
+                names(yvec) <- newsubset
+                sset[[paste0("s", scount)]] <- list(ivspec = ivn,
+                                                    beta = sest$beta[j],
+                                                    g0 = cbind(gs0, gsSpline0),
+                                                    g1 = cbind(gs1, gsSpline1),
+                                                    ys = yvec,
+                                                    w0 = sweight0,
+                                                    w1 = sweight1,
+                                                    n = n)
+            }
         }
-
         ## update counter (note scount is not referring
         ## to the list of IV regressions, but the components
         ## from the IV regressions)
         scount <- scount + 1
     }
-
     return(list(sset = sset, scount = scount))
 }
 
-#' Two-step GMM estimate of TE under point identification
+#' GMM estimate of TE under point identification
 #'
 #' If the user sets the argument \code{point = TRUE} in the function
 #' \code{ivmte}, then it is assumed that the treatment effect
@@ -2979,18 +3692,38 @@ genSSet <- function(data, sset, sest, splinesobj, pmodobj, pm0, pm1,
 #'     is what is used to generate the gamma moments.
 #' @param gstar0 vector, the target gamma moments for d = 0.
 #' @param gstar1 vector, the target gamma moments for d = 1.
+#' @param center numeric, the GMM moment equations from the original
+#'     sample. When bootstrapping, the solution to the point
+#'     identified case obtained from the original sample can be passed
+#'     through this argument to recenter the bootstrap distribution of
+#'     the J-statistic.
+#' @param subsetList list of subset indexes, one for each IV-like
+#'     specification.
+#' @param n number of observations in the data. This option is only
+#'     used when subsetting is involved.
+#' @param redundant vector of integers indicating which components in
+#'     the S-set are redundant.
+#' @param identity boolean, default set to \code{FALSE}. Set to
+#'     \code{TRUE} if GMM point estimate should use the identity
+#'     weighting matrix (i.e. one-step GMM).
+#' @param nMoments number of linearly independent moments. This option
+#'     is used to determine the cause of underidentified cases.
+#' @param splines boolean, set to \code{TRUE} if the MTRs involve
+#'     splines. This option is used to determine the cause of
+#'     underidentified cases.
 #' @param noisy boolean, default set to \code{TRUE}. If \code{TRUE},
 #'     then messages are provided throughout the estimation
 #'     procedure. Set to \code{FALSE} to suppress all messages,
 #'     e.g. when performing the bootstrap.
 #' @return a list containing the point estimate of the treatment
-#'     effects, the standard errors, the 90% and 95% confidence
-#'     intervals, the convergence code (see
-#'     \code{\link[stats]{optim}}), the coefficients on the MTR, and
-#'     the variance/covariance matrix of the MTR coefficient
-#'     estimates.
+#'     effects, and the MTR coefficient estimates. The moment
+#'     conditions evaluated at the solution are also returned, along
+#'     with the J-test results. However, if the option \code{center}
+#'     is passed, then the moment conditions and J-test are centered.
 #'
 #' @examples
+#' dtm <- ivmte:::gendistMosquito()
+#'
 #' ## Declare empty list to be updated (in the event multiple IV like
 #' ## specifications are provided
 #' sSet <- list()
@@ -3030,7 +3763,6 @@ genSSet <- function(data, sset, sest, splinesobj, pmodobj, pm0, pm1,
 #' targetGamma <- genTarget(treat = "d",
 #'                          m0 = ~ 1 + u,
 #'                          m1 = ~ 1 + u,
-#'                          uname = u,
 #'                          target = "atu",
 #'                          data = dtm,
 #'                          splinesobj = splinesList,
@@ -3060,87 +3792,241 @@ genSSet <- function(data, sset, sest, splinesobj, pmodobj, pm0, pm1,
 #'             gstar1 = targetGamma$gstar1)
 #'
 #' @export
-gmmEstimate <- function(sset, gstar0, gstar1, noisy = TRUE) {
-
-    gmmMat <- NULL
-    yMat   <- NULL
-    for (s in 1:length(sset)) {
-        ids <- seq(1, nrow(as.matrix(sset[[s]]$g0)))
-        gmmAdd <- cbind(ids, s,
-                        sset[[s]]$g0,
-                        sset[[s]]$g1)
-        gmmMat <- rbind(gmmMat, gmmAdd)
-        yAdd <- cbind(ids, s, sset[[s]]$ys)
-        yMat <- rbind(yMat, yAdd)
-    }
-    N <- length(ids)
-    gmmMat <- gmmMat[order(gmmMat[, 1], gmmMat[, 2]), ]
-    rownames(gmmMat) <- gmmMat[, 1]
-    yMat   <- yMat[order(yMat[, 1], yMat[, 2]), ]
-    ids <- unique(gmmMat[, 1])
-    gmmCompN <- ncol(gmmMat) - 2
-    if (gmmCompN > length(sset)) {
+gmmEstimate <- function(sset, gstar0, gstar1, center = NULL,
+                        subsetList = NULL, n = NULL, redundant = NULL,
+                        identity = FALSE, nMoments, splines,
+                        noisy = TRUE) {
+    gn0 <- ncol(gstar0)
+    gn1 <- ncol(gstar1)
+    if ((gn0 + gn1) > length(sset)) {
         stop(gsub("\\s+", " ",
-                  paste0("System is underidentified: excluding
-                         target moments, there are ",
-                         gmmCompN,
-                         " unknown parameters/MTR coefficients and ",
+                  paste0("GMM system is underidentified: there are ",
+                         (gn0 + gn1),
+                         " unknown MTR coefficients and ",
                          length(sset),
-                         " moment conditions (defined by IV-like
-                         specifications). Either expand the number of
-                         IV-like specifications, or modify m0 and m1.")))
+                         " moment conditions defined by IV-like
+                         specifications. Either expand the number of
+                         moments, or adjust m0 and m1.")),
+             call. = FALSE)
     }
-    gmmMat <- gmmMat[, -c(1, 2)]
-    yMat   <- yMat[, -c(1, 2)]
-
-    ## Perform iterative estimation
-    theta <- rep(0, ncol(gmmMat))
-    i <- 1
-
-    ## Note; only two-step GMM is permitted.
-    while (i <= 2) {
-        if (i == 1) {
-            thetaNew <- solve(t(gmmMat) %*% gmmMat) %*% t(gmmMat) %*% yMat
+    ## Perform first step of GMM
+    mm <- momentMatrix(sset, gn0, gn1, subsetList, n)
+    mlist <- (seq(length(sset)) - 1) * (gn0 + gn1 + 1) + 1
+    altmm <- matrix(t(mm[, -mlist]), byrow = TRUE, ncol = (gn0 + gn1))
+    altmean <- Matrix::Matrix(t(rep(1, nrow(mm)) %x% diag(length(sset))),
+                              sparse = TRUE)
+    xmat <- matrix(altmean %*% altmm / nrow(mm), ncol = (gn0 + gn1))
+    if (qr(xmat)$rank < (gn0 + gn1)) {
+        if (hasArg(nMoments) && hasArg(splines)) {
+            if (nMoments > qr(xmat)$rank && splines) {
+                stop(gsub("\\s+", " ",
+                          paste0("GMM system is underidentified: there are ",
+                          (gn0 + gn1),
+                          " unknowns, but the Gamma matrix has rank ",
+                          qr(xmat)$rank,
+                          ". The previous count of ",
+                          nMoments,
+                          " independent moments becomes
+                          unreliable when m0 or m1 includes splines.
+                          Either adjust the IV-like specifications,
+                          or adjust m0 and m1.")),
+                     call. = FALSE)
+            }
+        }
+        stop(gsub("\\s+", " ",
+                  paste0("GMM system is underidentified: there are ",
+                  (gn0 + gn1),
+                  " unknown MTR coefficients and ",
+                  qr(xmat)$rank,
+                  " linearly independent moment conditions defined by the
+                    IV-like specifications. Either adjust the
+                    IV-like specifications, or adjust m0 and m1.")),
+             call. = FALSE)
+    }
+    ymat <- colMeans(mm[, mlist])
+    ## Address collinear moments
+    if (is.null(redundant)) {
+        colDrop <- NULL
+        theta <- rnorm(gn0 + gn1) ## Random theta, to test for collinearity
+        tmpOmegaMat <- c(t(mm[, mlist]))
+        tmpOmegaMat <- tmpOmegaMat - altmm %*% theta
+        tmpOmegaMat <- matrix(tmpOmegaMat, byrow = TRUE, ncol = length(sset))
+        tmpOmegaMat <- t(tmpOmegaMat) %*% tmpOmegaMat / nrow(mm)
+        rankCheck <- eigen(tmpOmegaMat)
+        if (any(abs(rankCheck$values) < 1e-08)) {
+            colDict <- list()
+            colDrop <- seq(ncol(tmpOmegaMat))
+            colnames(tmpOmegaMat) <- seq(ncol(tmpOmegaMat))
+            while (any(abs(rankCheck$values) < 1e-08)) {
+                colPos <- which(abs(rankCheck$values) < 1e-08)[1]
+                colVec <- rankCheck$vectors[, colPos]
+                colSeq <- which(abs(colVec) > 1e-08)
+                colDropIndex <- max(colSeq)
+                tmpOmegaMat <- tmpOmegaMat[-colDropIndex, -colDropIndex]
+                rankCheck <- eigen(tmpOmegaMat)
+            }
+            colDrop <- which(! colDrop %in% colnames(tmpOmegaMat))
+        }
+    } else {
+        if (length(redundant) == 1 && redundant == 0) {
+            colDrop <- NULL
         } else {
-            olsA <- lapply(ids, function(x) {
-                gmmi <- gmmMat[as.integer(rownames(gmmMat)) == x, ]
-                t(gmmi) %*% ematInv %*% gmmi
-            })
-            olsA <- Reduce("+", olsA)
-            olsB <- lapply(ids, function(x) {
-                gmmi <- gmmMat[as.integer(rownames(gmmMat)) == x, ]
-                yvec <- yMat[as.integer(rownames(errors)) == x]
-                t(gmmi) %*% ematInv %*% yvec
-            })
-            olsB <- Reduce("+", olsB)
-            thetaNew <- solve(olsA) %*% olsB
+            colDrop <- redundant
         }
-        errors <- yMat - gmmMat %*% thetaNew
-        if (i == 1) {
-            emat <- lapply(ids, function(x) {
-                evec <- errors[as.integer(rownames(errors)) == x]
-                evec <- round(evec, 8)
-                evec %*% t(evec)
-            })
-            emat <- Reduce("+", emat) / N
-            emat <- (emat + t(emat)) / 2
-            ematInv <- solve(emat)
-            ematInv <- (ematInv + t(ematInv)) / 2
-        }
-        theta <- thetaNew
-        i <- i + 1
     }
-    ## Construct point estimate and CI of TE
-    rownames(theta) <- c(paste0("m0.", colnames(gstar0)),
-                         paste0("m1.", colnames(gstar1)))
+    if (!is.null(colDrop)) {
+        colDrop <- sort(colDrop)
+        xmat <- xmat[-colDrop, ]
+        ymat <- ymat[-colDrop]
+        colDropStr <- sapply(colDrop, FUN = function(x) {
+            c(sset[[x]]$ivspec, names(sset[[x]]$beta))
+        })
+        if (is.null(redundant)) {
+            dropMessage <- paste("IV-like Spec.     Component\n",
+                                 "------------------------------------------\n",
+                                 collapse = "")
+            for (i in 1:ncol(colDropStr)) {
+                dropMessage <-
+                    paste(dropMessage, colDropStr[1, i],
+                          paste(rep(" ", 16 - length(colDropStr[1, i])),
+                                collapse = ""),
+                          colDropStr[2, i], "\n",
+                          collapse = "")
+            }
+            warning(paste(gsub("\\s+", " ",
+                               "The following components have been dropped
+                                due to collinearity:"),
+                          "\n",
+                          dropMessage,
+                          collapse = ""),
+                    call. = FALSE,
+                    immediate. = FALSE)
+        }
+    }
+    else {
+        if (length(redundant) == 1 && redundant == 0) {
+            colDrop <- NULL
+        } else {
+            colDrop <- redundant
+        }
+    }
+    ## Perform first stage GMM
+    if (is.null(center)) {
+        theta <- solve(t(xmat) %*% xmat) %*% t(xmat) %*% ymat
+    } else {
+        theta <- solve(t(xmat) %*% xmat) %*%
+            (t(xmat) %*% ymat - t(xmat) %*% center)
+    }
+    ## Perform second step of GMM
+    if (!identity) {
+        alty <- c(t(mm[, mlist]))
+        omegaMat <- alty - altmm %*% theta
+        omegaMat <- matrix(omegaMat, byrow = TRUE, ncol = length(sset))
+        omegaMat <- t(omegaMat) %*% omegaMat / nrow(mm)
+        if (!is.null(colDrop)) omegaMat <- omegaMat[-colDrop, -colDrop]
+        omegaMat <- solve(omegaMat)
+        if (is.null(center)) {
+            theta <- solve(t(xmat) %*% omegaMat %*% xmat) %*%
+                t(xmat) %*% omegaMat %*% ymat
+        } else {
+            theta <- solve(t(xmat) %*% omegaMat %*% xmat) %*%
+                (t(xmat) %*% omegaMat %*% ymat -
+                 t(xmat) %*% omegaMat %*% center)
+        }
+    }
+    moments <- ymat - xmat %*% theta
+    ## Perform J test
+    if ((length(sset) - length(colDrop)) > gn0 + gn1) {
+        if (identity) {
+            if (is.null(center)) {
+                jtest <- nrow(mm) * t(moments) %*% moments
+            } else {
+                jtest <- nrow(mm) * t(moments - center) %*%
+                    (moments - center)
+            }
+        } else {
+            if (is.null(center)) {
+                jtest <- nrow(mm) * t(moments) %*% omegaMat %*% moments
+            } else {
+                jtest <- nrow(mm) * t(moments - center) %*%
+                    omegaMat %*% (moments - center)
+            }
+        }
+        if (is.null(redundant)) {
+            chiDf <- length(sset) - length(colDrop) - gn0 - gn1
+        } else {
+            chiDf <- length(sset) - gn0 - gn1
+        }
+        jtest <- c(jtest,
+                   1 - pchisq(jtest,
+                              df = chiDf),
+                   chiDf)
+        names(jtest) <- c("J-statistic",
+                          "p-value (ignoring first step)", "df")
+    } else {
+        jtest <- NULL
+    }
+    names(theta) <- c(paste0("m0.", colnames(gstar0)),
+                      paste0("m1.", colnames(gstar1)))
     pointestimate <- sum(c(colMeans(gstar0), colMeans(gstar1)) * theta)
     if (noisy == TRUE) {
-        message()
-        message(paste0("Point estimate of the target parameter: ",
-                       round(pointestimate, 4), "\n"))
+        cat("\nPoint estimate of the target parameter: ",
+            pointestimate, "\n\n", sep = "")
     }
+    if (is.null(colDrop)) colDrop <- 0
     return(list(pointestimate = as.numeric(pointestimate),
-                coef = theta))
+                coef = theta,
+                moments = moments,
+                jtest = jtest,
+                redundant = colDrop))
+}
+
+#' Construct pre-meaned moment matrix
+#'
+#' This function constructs the matrix to be fed into the GMM
+#' estimator to construct the moment conditions.
+#'
+#' @param sset a list of lists constructed from the function
+#'     \link{genSSet}. Each inner list should include a coefficient
+#'     corresponding to a term in an IV specification, a matrix of the
+#'     estimates of the gamma moments conditional on (X, Z) for d = 0,
+#'     and a matrix of the estimates of the gamma moments conditional
+#'     on (X, Z) for d = 1. The column means of the last two matrices
+#'     is what is used to generate the gamma moments.
+#' @param gn0 integer, number of terms in the MTR for control group.
+#' @param gn1 integer, number of terms in the MTR for treated group.
+#' @param subsetList list of subset indexes, one for each IV-like
+#'     specification.
+#' @param n number of observations in the data. This option is only
+#'     used when subsets are involved.
+#' @return matrix whose column means can be used to carry out the GMM
+#'     estimation.
+momentMatrix <- function(sset, gn0, gn1, subsetList = NULL, n = NULL) {
+    momentMatrix <- NULL
+    momentNames <- NULL
+    for (s in 1:length(sset)) {
+        if (!is.null(subsetList)) {
+            momentMatrixTmp <- matrix(0, nrow = n, ncol = 1 + gn0 + gn1)
+            if (!is.integer(subsetList[[sset[[s]]$ivspec]])) {
+                momentMatrixTmp <- cbind(sset[[s]]$ys,
+                                         sset[[s]]$g0,
+                                         sset[[s]]$g1)
+            } else {
+                momentMatrixTmp[subsetList[[sset[[s]]$ivspec]], ] <-
+                    cbind(sset[[s]]$ys , sset[[s]]$g0, sset[[s]]$g1)
+            }
+        } else {
+            momentMatrixTmp <- cbind(sset[[s]]$ys, sset[[s]]$g0, sset[[s]]$g1)
+        }
+        momentMatrix <- cbind(momentMatrix,
+                              momentMatrixTmp)
+        momentNames <- c(momentNames,
+                         paste0("s", s, "y"),
+                         paste0("s", s, "g0", seq(1, gn0)),
+                         paste0("s", s, "g1", seq(1, gn1)))
+    }
+    colnames(momentMatrix) <- momentNames
+    return(momentMatrix)
 }
 
 #' Format result for display
@@ -3161,4 +4047,189 @@ fmtResult <- function(x) {
     }
     if (is.numeric(fx)) fx <- as.character(fx)
     return(fx)
+}
+
+#' Print results
+#'
+#' This function uses the print method on the ivmte return list.
+#'
+#' @param x an object returned from '\code{ivmte}'.
+#' @param ... additional arguments.
+#' @return basic set of results.
+#' @export
+print.ivmte <- function(x, ...) {
+    stopifnot(inherits(x, "ivmte"))
+    if (!is.null(x$bounds)) {
+        cat("\n")
+        ## Return bounds, audit cout, and minumum criterion
+        cat(sprintf("Bounds on the target parameter: [%s, %s]\n",
+                    fmtResult(x$bounds[1]),
+                    fmtResult(x$bounds[2])))
+        if (!is.null(x$audit.grid$violations)) {
+            cat(sprintf("Audit reached audit.max (%s)\n",
+                        x$audit.count))
+        } else {
+            if (x$audit.count == 1) rs <- "round"
+            if (x$audit.count > 1) rs <- "rounds"
+            cat(sprintf("Audit terminated successfully after %s",
+                        x$audit.count), rs, "\n")
+        }
+        cat(sprintf("Minimum criterion: %s \n", x$audit.criterion))
+        ## Return LP solver used
+        cat(sprintf("LP solver: %s\n", x$lpsolver))
+        if (x$lpsolver == "lp_solve ('lpSolveAPI')") {
+            warning(
+                gsub("\\s+", " ",
+                     "The R package 'lpSolveAPI' interfaces with 'lp_solve',
+                      which is outdated and potentially unreliable.  It is
+                      recommended to use commercial solvers
+                      Gurobi (lpsolver = 'gurobi')
+                      or CPLEX (lpsolver = 'cplexAPI') instead.
+                      Free academic licenses can be obtained for these
+                      commercial solvers."),
+                "\n", call. = FALSE)
+        }
+    }
+    if (!is.null(x$pointestimate)) {
+        cat("\n")
+        ## Return point estimate
+        cat(sprintf("Point estimate of the target parameter: %s\n",
+                    fmtResult(x$pointestimate)))
+    }
+    cat("\n")
+}
+
+#' Summarize results
+#'
+#' This function uses the summary method on the ivmte return list.
+#'
+#' @param object an object returned from '\code{ivmte}'.
+#' @param ... additional arguments.
+#' @return summarized results.
+#' @export
+summary.ivmte <- function(object, ...) {
+    stopifnot(inherits(object, "ivmte"))
+    ## Summary for the partially identified case
+    if (!is.null(object$bounds)) {
+        cat("\n")
+        ## Return bounds, audit count, and minumum criterion
+        cat(sprintf("Bounds on the target parameter: [%s, %s]\n",
+                    fmtResult(object$bounds[1]),
+                    fmtResult(object$bounds[2])))
+        if (!is.null(object$audit.grid$violations)) {
+            cat(sprintf("Audit reached audit.max (%s)\n",
+                        object$audit.count))
+        } else {
+            if (object$audit.count == 1) rs <- "round"
+            if (object$audit.count > 1) rs <- "rounds"
+            cat(sprintf("Audit terminated successfully after %s",
+                        object$audit.count), rs, "\n")
+        }
+        cat(sprintf("Minimum criterion: %s \n", object$audit.criterion))
+        ## Return LP solver used
+        cat(sprintf("LP solver: %s\n", object$lpsolver))
+        if (object$lpsolver == "lp_solve ('lpSolveAPI')") {
+            warning(
+                gsub("\\s+", " ",
+                     "The R package 'lpSolveAPI' interfaces with 'lp_solve',
+                      which is outdated and potentially unreliable.  It is
+                      recommended to use commercial solvers
+                      Gurobi (lpsolver = 'gurobi')
+                      or CPLEX (lpsolver = 'cplexAPI') instead.
+                      Free academic licenses can be obtained for these
+                      commercial solvers."),
+                "\n", call. = FALSE)
+        }
+        if (!is.null(object$bootstraps)) {
+            ## Return confidence intervals and p-values
+            levels <- as.numeric(rownames(object$bounds.ci[[1]]))
+            ## ciTypes <- names(object$bounds.ci)
+            ciTypes <- "backward"
+            ciN <- 1
+            for (i in ciTypes) {
+                ## Confidence intervals
+                cat("\nBootstrapped confidence intervals (",
+                    i, "):\n", sep = "")
+                for (j in 1:length(levels)) {
+                    cistr <- paste0("[",
+                                    fmtResult(object$bounds.ci[[i]][j, 1]),
+                                    ", ",
+                                    fmtResult(object$bounds.ci[[i]][j, 2]),
+                                    "]")
+                    cat("    ",
+                        levels[j] * 100,
+                        "%: ",
+                        cistr, "\n", sep = "")
+                }
+                ## p-values
+                cat("p-value: ",
+                    fmtResult(object$pvalue[ciN]), "\n", sep = "")
+                ciN <- ciN + 1
+            }
+            ## Return specification test
+            if (!is.null(object$specification.pvalue)) {
+                cat("Bootstrapped specification test p-value: ",
+                    fmtResult(object$specification.pvalue), "\n", sep = "")
+            }
+            ## Return bootstrap counts
+            cat(sprintf("Number of bootstraps: %s",
+                        object$bootstraps))
+            if (object$bootstraps.failed > 0) {
+                cat(sprintf(" (%s failed and redrawn)\n",
+                            object$bootstraps.failed))
+            } else {
+                cat("\n")
+            }
+        }
+    }
+    ## Summary for the point identified case
+    if (!is.null(object$pointestimate)) {
+        cat("\n")
+        ## Return bounds, audit cout, and minumum criterion
+        cat(sprintf("Point estimate of the target parameter: %s\n",
+                    fmtResult(object$pointestimate)))
+        if (!is.null(object$bootstraps)) {
+            ## Return confidence intervals and p-values
+            levels <- as.numeric(rownames(object$pointestimate.ci[[1]]))
+            ciTypes <- c("nonparametric", "parametric")
+            for (i in 1:1) { ## Note: 1:1 is deliberate, only want to
+                             ## present nonparametric CI
+                if (i == 1) ciType <- "nonparametric"
+                if (i == 2) ciType <- "normal quantiles"
+                ## Confidence intervals
+                cat("\nBootstrapped confidence intervals (",
+                    ciType, "):\n", sep = "")
+                for (j in 1:length(levels)) {
+                    cistr <-
+                        paste0("[",
+                               fmtResult(object$pointestimate.ci[[i]][j, 1]),
+                               ", ",
+                               fmtResult(object$pointestimate.ci[[i]][j, 2]),
+                               "]")
+                    cat("    ",
+                        levels[j] * 100,
+                        "%: ",
+                        cistr, "\n", sep = "")
+                }
+                ## p-values
+                cat("p-value: ",
+                    fmtResult(object$pvalue[i]), "\n", sep = "")
+            }
+            ## Return specification test
+            if (!is.null(object$jtest)) {
+                cat("Bootstrapped J-test p-value: ",
+                    fmtResult(object$jtest[2]), "\n", sep = "")
+            }
+            ## Return bootstrap counts
+            cat(sprintf("Number of bootstraps: %s",
+                        object$bootstraps))
+            if (object$bootstraps.failed > 0) {
+                cat(sprintf(" (%s failed and redrawn)\n",
+                            object$bootstraps.failed))
+            } else {
+                cat("\n")
+            }
+        }
+    }
+    cat("\n")
 }
