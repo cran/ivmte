@@ -79,7 +79,7 @@ polyparse <- function(formula, data, uname = "u", env = parent.frame(),
     uname <- gsub("~", "", uname)
     uname <- gsub("\\\"", "", uname)
     ## Include redundant variable u, so monomials in m0, m1
-    ## specifications correspond polynomial coefficients on u
+    ## specifications correspond to polynomial coefficients on u
     ## monomials
     data[[uname]] <- 1
     dmat <- design(formula, data)$X
@@ -191,9 +191,37 @@ polyparse <- function(formula, data, uname = "u", env = parent.frame(),
         polymat <- matrix(polymat, ncol = 1)
         rownames(polymat) <- rownames(data)
     }
+    ## Construct a dictionary of non-u terms
+    xterms <- lapply(seq(length(exporder)), function(x) {
+        if (exporder[x] == 0) {
+            NULL
+        } else {
+            splitTerms <- unlist(strsplit(oterms[x], split = ":"))
+            if (length(splitTerms) == 1) {
+                NULL
+            } else {
+                if (exporder[x] == 1) {
+                    rmPos <- which(splitTerms == uname)
+                    if (length(rmPos) == 0) {
+                        rmPos <- which(splitTerms == paste0("I(", uname, "^1)"))
+                    }
+                    splitTerms <- splitTerms[-rmPos]
+                    paste(splitTerms, collapse = ":")
+                } else {
+                    rmPos <- which(splitTerms ==
+                                   paste0("I(", uname, "^",
+                                          exporder[x], ")"))
+                    splitTerms <- splitTerms[-rmPos]
+                    paste(splitTerms, collapse = ":")
+                }
+            }
+        }
+    })
+    names(xterms) <- oterms
     return(list(polymat = polymat,
                 exporder = exporder,
-                terms = oterms))
+                terms = oterms,
+                xterms = xterms))
 }
 
 #' Function to multiply polynomials
@@ -782,10 +810,13 @@ genGammaSplines <- function(splinesobj, data, lb, ub, multiplier = 1,
             missingVars <- inters[[j]][!inters[[j]] %in%
                                        colnames(nonSplinesDmat)]
             if (length(missingVars) > 0) {
+                nonSplinesDmat <- data.frame(nonSplinesDmat)
                 for (mv in missingVars) {
                     nonSplinesDmat[, mv] <- 0
                 }
                 nonSplinesDmat <- nonSplinesDmat[, inters[[j]]]
+                nonSplinesDmat <- as.matrix(nonSplinesDmat)
+                rownames(nonSplinesDmat) <- rownames(data)
             }
             ## Spline integral matrices
             splinesLB <- eval(parse(text = gsub("uSpline\\(",
@@ -796,7 +827,6 @@ genGammaSplines <- function(splinesobj, data, lb, ub, multiplier = 1,
                                                 names(splines)[j])))
             splinesInt <- splinesUB - splinesLB
             ## Combine the design and integral matrices
-            ## for (l in 1:length(splines[[j]])) {
             for (l in 1:length(colnames(nonSplinesDmat))) {
                 tmpGamma <- sweep(splinesInt,
                                   MARGIN = 1,
@@ -909,7 +939,6 @@ constructConstant <- function(x) {
     return(fun)
 }
 
-
 #' Correct boolean expressions in terms lists
 #'
 #' This function takes a vector of terms and places parentheses around
@@ -941,4 +970,94 @@ parenthBoolean <- function(termsList) {
     })
     termsList <- unlist(termsList)
     return(termsList)
+}
+
+#' Update splines object with list of interactions
+#'
+#' Certain interactions between factor variables and splines should be
+#' dropped to avoid collinearity. Albeit collinearity in the MTR
+#' specification will not impact the bounds, it can substantially
+#' impact how costly it is to carry out the estimation. What this
+#' function does is map each spline to a temporary variable. A design
+#' matrix is then constructed using these temporary variables in place
+#' the splines. If an interaction involving one of the temporary
+#' variables is dropped, then one knows to also drop the corresponding
+#' interaction with the spline. Note that only interaction terms need
+#' to be omitted, so one does not need to worry about the formula
+#' contained in removeSplines$formula.
+#' @param splinesobj list, consists of two elelments. The first is
+#'     \code{removeSplines(m0)}, the second is
+#'     \code{removeSplines(m1)}.
+#' @param m0 one-sided formula for the marginal treatment response
+#'     function for the control group. This should be the full MTR
+#'     specificaiton (i.e. not the specification after removing the
+#'     splines).
+#' @param m1 one-sided formula for the marginal treatment response
+#'     function for the treated group. This should be the full MTR
+#'     specificaiton (i.e. not the specification after removing the
+#'     splines).
+#' @param data data.frame, restricted to complete observations.
+#' @param uname string, name of the unobserved variable.
+#' @return An updated version of \code{splinesobj}.
+#' @export
+interactSplines <- function(splinesobj, m0, m1, data, uname) {
+    tmpInterName <- "..t.i.n"
+    for (d in 0:1) {
+        if (!is.null(splinesobj[[d + 1]]$splineslist)) {
+            mdata <- unique(data)
+            mdata[, uname] <- 1
+            if (d == 0) md <- m0
+            if (d == 1) md <- m1
+            md <- gsub("\\s+", " ", Reduce(paste, deparse(md)))
+            altNames <- list()
+            splineKeys <- names(splinesobj[[d + 1]]$splinescall)
+            for (i in 1:length(splinesobj[[d + 1]]$splinescall)) {
+                tmpName <- paste0(tmpInterName, i)
+                mdata[, tmpName] <- 1
+                altNames[splineKeys[i]] <- tmpName
+                for (j in 1:length(splinesobj[[d + 1]]$splinescall[[i]])) {
+                    origCall <- splinesobj[[d + 1]]$splinescall[[i]][j]
+                    origCall <- gsub("\\)", "\\\\)",
+                                     gsub("\\(", "\\\\(", origCall))
+                    origCall <- gsub("\\$", "\\\\$", origCall)
+                    origCall <- gsub("\\.", "\\\\.", origCall)
+                    origCall <- gsub("\\+", "\\\\+", origCall)
+                    origCall <- gsub("\\*", "\\\\*", origCall)
+                    origCall <- gsub("\\^", "\\\\^", origCall)
+                    md <- gsub(origCall, tmpName, md)
+                }
+            }
+            tmpColNames <- colnames(design(as.formula(md), mdata)$X)
+            for (k in 1:length(altNames)) {
+                tmpName <- paste0(tmpInterName, k)
+                inter1 <- grep(paste0(":", altNames[[k]], "$"),
+                               tmpColNames)
+                inter2 <- grep(paste0("^", altNames[[k]], ":"),
+                               tmpColNames)
+                inter3 <- grep(paste0(":", altNames[[k]], ":"),
+                               tmpColNames)
+                inter4 <- altNames[[k]] %in% tmpColNames
+                interpos <- c(inter1, inter2, inter3)
+                if (length(interpos) > 0) {
+                    ## The case where there are interactions with splines
+                    altNames[[k]] <- parenthBoolean(tmpColNames[interpos])
+                    altNames[[k]] <- gsub(paste0(":", tmpName), "",
+                                          altNames[[k]])
+                    altNames[[k]] <- gsub(paste0(tmpName, ":"), "",
+                                          altNames[[k]])
+                }
+                if (inter4) {
+                    if (length(interpos) == 0) {
+                        altNames[[k]] <- "1"
+                    } else {
+                        altNames[[k]] <- c("1", altNames[[k]])
+                    }
+                }
+            }
+            splinesobj[[d + 1]]$splinesinter <- altNames
+        } else {
+            splinesobj[[d + 1]]$splinesinter <- NULL
+        }
+    }
+    return(splinesobj)
 }

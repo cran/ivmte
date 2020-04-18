@@ -4,15 +4,12 @@
 \alias{bound}
 \title{Obtaining TE bounds}
 \usage{
-bound(g0, g1, sset, lpobj, obseq.factor, lpsolver, noisy = FALSE,
-  debug = FALSE)
+bound(env, sset, lpsolver, lpsolver.options, noisy = FALSE,
+  smallreturnlist = FALSE, debug = FALSE)
 }
 \arguments{
-\item{g0}{set of expectations for each terms of the MTR for the
-control group.}
-
-\item{g1}{set of expectations for each terms of the MTR for the
-control group.}
+\item{env}{environment containing the matrices defining the LP
+problem.}
 
 \item{sset}{a list containing the point estimates and gamma
 components associated with each element in the S-set. This
@@ -20,18 +17,17 @@ object is only used to determine the names of terms. If it is
 no submitted, then no names are provided to the solution
 vector.}
 
-\item{lpobj}{A list of matrices and vectors defining an LP problem.}
-
-\item{obseq.factor}{overall multiplicative factor for how much more
-the solution is permitted to violate observational equivalence
-of the IV-like estimands, i.e. \code{obseq.factor} will
-multiply \code{minobseq} directly.}
-
 \item{lpsolver}{string, name of the package used to solve the LP
 problem.}
 
+\item{lpsolver.options}{list, each item of the list should
+correspond to an option specific to the LP solver selected.}
+
 \item{noisy}{boolean, set to \code{TRUE} if optimization results
 should be displayed.}
+
+\item{smallreturnlist}{boolean, set to \code{TRUE} if the LP model
+should not be returned.}
 
 \item{debug}{boolean, indicates whether or not the function should
 provide output when obtaining bounds. The option is only
@@ -46,7 +42,9 @@ a list containing the bounds on the treatment effect; the
     problem that the optimizer solved.
 }
 \description{
-This function estimates the bounds on the target treatment effect.
+This function estimates the bounds on the target treatment
+effect. The LP model must be passed as an environment variable,
+under the entry \code{$lpobj}. See \code{\link{lpSetup}}.
 }
 \examples{
 dtm <- ivmte:::gendistMosquito()
@@ -56,8 +54,8 @@ dtm <- ivmte:::gendistMosquito()
 sSet <- list()
 
 ## Declare MTR formulas
-formula1 = ~ 1 + u
 formula0 = ~ 1 + u
+formula1 = ~ 1 + u
 
 ## Construct object that separates out non-spline components of MTR
 ## formulas from the spline components. The MTR functions are
@@ -66,13 +64,13 @@ splinesList = list(removeSplines(formula0), removeSplines(formula1))
 
 ## Construct MTR polynomials
 polynomials0 <- polyparse(formula = formula0,
-                 data = dtm,
-                 uname = u,
-                 as.function = FALSE)
-polynomials1 <- polyparse(formula = formula0,
-                 data = dtm,
-                 uname = u,
-                 as.function = FALSE)
+                          data = dtm,
+                          uname = u,
+                          as.function = FALSE)
+polynomials1 <- polyparse(formula = formula1,
+                          data = dtm,
+                          uname = u,
+                           as.function = FALSE)
 
 ## Generate propensity score model
 propensityObj <- propensity(formula = d ~ z,
@@ -112,6 +110,8 @@ sSet <- genSSet(data = dtm,
                 yvar = "ey",
                 dvar = "d",
                 means = TRUE)
+## Only the entry $sset is required
+sSet <- sSet$sset
 
 ## Define additional upper- and lower-bound constraints for the LP
 ## problem
@@ -120,23 +120,36 @@ A <- cbind(A, rbind(cbind(1, seq(0, 1, 0.1)),
                     matrix(0, nrow = 11, ncol = 2)))
 A <- cbind(A, rbind(matrix(0, nrow = 11, ncol = 2),
                     cbind(1, seq(0, 1, 0.1))))
-
 sense <- c(rep(">", 11), rep("<", 11))
 rhs <- c(rep(0.2, 11), rep(0.8, 11))
 
-## Construct LP object to be interpreted and solved by lpSolveAPI
-lpObject <- lpSetup(sset = sSet$sset,
-                    mbA = A,
+## Construct LP object to be interpreted and solved by
+## lpSolveAPI. Note that an environment has to be created for the LP
+## object. The matrices defining the shape restrictions must be stored
+## as a list under the entry \\code{$mbobj} in the environment.
+lpEnv <- new.env()
+lpEnv$mbobj <- list(mbA = A,
                     mbs = sense,
-                    mbrhs = rhs,
-                    lpsolver = "lpSolveAPI")
-
-## Estimate the bounds
-bound(g0 = targetGamma$gstar0,
-      g1 = targetGamma$gstar1,
-      sset = sSet$sset,
-      lpobj = lpObject,
-      obseq.factor = 1,
-      lpsolver = "lpSolveAPI")
+                    mbrhs = rhs)
+## Convert the matrices defining the shape constraints into a format
+## that is suitable for the LP solver.
+lpSetup(env = lpEnv,
+        sset = sSet,
+        lpsolver = "lpsolveapi")
+## Setup LP model so that it is solving for the bounds.
+lpSetupBound(env = lpEnv,
+             g0 = targetGamma$gstar0,
+             g1 = targetGamma$gstar1,
+             sset = sSet,
+             criterion.factor = 0,
+             lpsolver = "lpsolveapi")
+## Declare any LP solver options as a list.
+lpOptions <- optionsLpSolveAPI(list(epslevel = "tight"))
+## Obtain the bounds.
+bounds <- bound(env = lpEnv,
+                sset = sSet,
+                lpsolver = "lpsolveapi",
+                lpsolver.options = lpOptions)
+cat("The bounds are [",  bounds$min, ",", bounds$max, "].\\n")
 
 }

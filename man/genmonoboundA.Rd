@@ -4,11 +4,17 @@
 \alias{genmonoboundA}
 \title{Generating monotonicity and boundedness constraints}
 \usage{
-genmonoboundA(support, grid_index, uvec, splinesobj, monov, uname, m0, m1,
-  sset, gstar0, gstar1, m0.lb, m0.ub, m1.lb, m1.ub, mte.lb, mte.ub, m0.dec,
-  m0.inc, m1.dec, m1.inc, mte.dec, mte.inc)
+genmonoboundA(pm0, pm1, support, grid_index, uvec, splinesobj, monov,
+  uname, m0, m1, sset, gstar0, gstar1, m0.lb, m0.ub, m1.lb, m1.ub, mte.lb,
+  mte.ub, m0.dec, m0.inc, m1.dec, m1.inc, mte.dec, mte.inc,
+  solution.m0.min = NULL, solution.m1.min = NULL,
+  solution.m0.max = NULL, solution.m1.max = NULL, audit.tol)
 }
 \arguments{
+\item{pm0}{A list of the monomials in the MTR for d = 0.}
+
+\item{pm1}{A list of the monomials in the MTR for d = 1.}
+
 \item{support}{a matrix for the support of all variables that enter
 into the MTRs.}
 
@@ -81,6 +87,37 @@ decreasing.}
 
 \item{mte.inc}{boolean, indicating whether the MTE is monotone
 increasing.}
+
+\item{solution.m0.min}{vector, the coefficients for the MTR for
+\code{D = 0} corresponding to the lower bound of the target
+parameter. If passed, this will initiate checks of shape
+constraints.}
+
+\item{solution.m1.min}{vector, the coefficients for the MTR for
+\code{D = 1} corresponding to the lower bound of the target
+parameter. If passed, this will initiate checks of shape
+constraints.}
+
+\item{solution.m0.max}{vector, the coefficients for the MTR for
+\code{D = 0} corresponding to the upper bound of the target
+parameter. If passed, this will initiate checks of shape
+constraints.}
+
+\item{solution.m1.max}{vector, the coefficients for the MTR for
+\code{D = 1} corresponding to the upper bound of the target
+parameter. If passed, this will initiate checks of shape
+constraints.}
+
+\item{audit.tol}{feasibility tolerance when performing the
+audit. By default to set to be equal to the Gurobi
+(\code{lpsolver = "gurobi"}) and CPLEX (\code{lpsolver =
+"cplexapi"}) feasibility toleraence, which is set to
+\code{1e-06} by default.  If the LP solver is lp_solve
+(\code{lpsolver = "lpsolveapi"}), this parameter is set to
+\code{1e-06} by default. This parameter should only be changed
+if the feasibility tolerance of the LP solver is changed, or if
+numerical issues result in discrepancies between the LP
+solver's feasibility check and the audit.}
 }
 \value{
 a list containing a unified constraint matrix, unified

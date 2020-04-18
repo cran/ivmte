@@ -4,17 +4,19 @@
 \alias{audit}
 \title{Audit procedure}
 \usage{
-audit(data, uname, m0, m1, splinesobj, vars_mtr, terms_mtr0, terms_mtr1,
-  vars_data, initgrid.nu = 20, initgrid.nx = 20, audit.nx = 2500,
-  audit.nu = 25, audit.add = 100, audit.max = 25,
-  audit.grid = NULL, save.grid = FALSE, m1.ub, m0.ub, m1.lb, m0.lb,
-  mte.ub, mte.lb, m1.ub.default = FALSE, m0.ub.default = FALSE,
+audit(data, uname, m0, m1, pm0, pm1, splinesobj, vars_mtr, terms_mtr0,
+  terms_mtr1, vars_data, initgrid.nu = 20, initgrid.nx = 20,
+  audit.nx = 2500, audit.nu = 25, audit.add = 100, audit.max = 25,
+  audit.tol, audit.grid = NULL, m1.ub, m0.ub, m1.lb, m0.lb, mte.ub,
+  mte.lb, m1.ub.default = FALSE, m0.ub.default = FALSE,
   mte.ub.default = FALSE, m1.lb.default = FALSE,
   m0.lb.default = FALSE, mte.lb.default = FALSE, m0.dec = FALSE,
   m0.inc = FALSE, m1.dec = FALSE, m1.inc = FALSE, mte.dec = FALSE,
   mte.inc = FALSE, sset, gstar0, gstar1, orig.sset = NULL,
-  orig.criterion = NULL, criterion.tol = 0, lpsolver, noisy = TRUE,
-  seed = 12345, debug = FALSE)
+  orig.criterion = NULL, criterion.tol = 0, lpsolver, lpsolver.options,
+  lpsolver.presolve, lpsolver.options.criterion, lpsolver.options.bounds,
+  smallreturnlist = FALSE, noisy = TRUE, seed = 12345,
+  debug = FALSE)
 }
 \arguments{
 \item{data}{\code{data.frame} or \code{data.table} used to estimate
@@ -31,18 +33,21 @@ incorporated using the expression \code{uSpline}, e.g.
 TRUE)}. The \code{intercept} argument may be omitted, and is
 set to \code{TRUE} by default.}
 
-\item{m1}{one-sided formula for marginal treatment response
-function for treated group. Splines can also be incorporated
-using the expression "uSplines(degree, knots, intercept)". The
-\code{intercept} argument may be omitted, and is set to
-\code{TRUE} by default.}
+\item{m1}{one-sided formula for the marginal treatment response
+function for the treated group. See \code{m0} for details.}
+
+\item{pm0}{A list of the monomials in the MTR for the control
+group.}
+
+\item{pm1}{A list of the monomials in the MTR for the treated
+group.}
 
 \item{splinesobj}{list of spline components in the MTRs for treated
 and control groups. Spline terms are extracted using
 \code{\link{removeSplines}}. This object is supposed to be a
 dictionary of splines, containing the original calls of each
 spline in the MTRs, their specifications, and the index used
-for renaming each component.}
+for naming each basis spline.}
 
 \item{vars_mtr}{character, vector of variables entering into
 \code{m0} and \code{m1}.}
@@ -56,10 +61,13 @@ for renaming each component.}
 \item{vars_data}{character, vector of variables that can be found
 in the data.}
 
-\item{initgrid.nu}{integer determining the number of evenly spread
-points in the interval [0, 1] of the unobservable \code{u} used
-to form the initial constraint grid for imposing shape
-restrictions on the MTRs.}
+\item{initgrid.nu}{integer determining the number of points in the
+open interval (0, 1) drawn from a Halton sequence. The end
+points 0 and 1 are additionally included. These points are
+always a subset of the points defining the audit grid (see
+\code{audit.nu}). These points are used to form the initial
+constraint grid for imposing shape restrictions on the \code{u}
+components of the MTRs.}
 
 \item{initgrid.nx}{integer determining the number of points of the
 covariates used to form the initial constraint grid for
@@ -70,8 +78,12 @@ covariates space to audit in each iteration of the audit
 procedure.}
 
 \item{audit.nu}{integer determining the number of points in the
-interval [0, 1], corresponding to space of unobservable
-\code{u}, to audit in each iteration of the audit procedure.}
+open interval (0, 1) drawn from a Halton sequence. The end
+points 0 and 1 are additionally included. These points are used
+to audit whether the shape restrictions on the \code{u}
+components of the MTRs are satisfied. The initial grid used to
+impose the shape constraints in the LP problem are constructed
+from a subset of these points.}
 
 \item{audit.add}{maximum number of points to add to the initial
 constraint grid for imposing each kind of shape constraint. For
@@ -82,15 +94,20 @@ added to the constraint grid.}
 \item{audit.max}{maximum number of iterations in the audit
 procedure.}
 
-\item{audit.grid}{list, contains the A A matrix used in the audit
-for the original sample, as well as the RHS vector used in the
-audit from the original sample.}
+\item{audit.tol}{feasibility tolerance when performing the
+audit. By default to set to be equal to the Gurobi
+(\code{lpsolver = "gurobi"}) and CPLEX (\code{lpsolver =
+"cplexapi"}) feasibility tolerance, which is set to
+\code{1e-06} by default.  If the LP solver is lp_solve
+(\code{lpsolver = "lpsolveapi"}), this parameter is set to
+\code{1e-06} by default. This parameter should only be changed
+if the feasibility tolerance of the LP solver is changed, or if
+numerical issues result in discrepancies between the LP
+solver's feasibility check and the audit.}
 
-\item{save.grid}{boolean, set to \code{FALSE} by default. Set to
-true if the fine grid from the audit should be saved. This
-option is used for inference procedure under partial
-identification, which uses the fine grid from the original
-sample in all bootstrap resamples.}
+\item{audit.grid}{list, contains the \code{A} matrix used in the
+audit for the original sample, as well as the RHS vector used
+in the audit from the original sample.}
 
 \item{m1.ub}{numeric value for upper bound on MTR for the treated
 group. By default, this will be set to the largest value of the
@@ -154,15 +171,16 @@ to \code{TRUE} if the MTE should be weakly monotone decreasing.}
 \item{mte.inc}{logical, set to \code{FALSE} by default. Set equal
 to \code{TRUE} if the MTE should be weakly monotone increasing.}
 
-\item{sset}{a list containing the point estimates and gamma}
+\item{sset}{a list containing the point estimates and gamma moments
+for each IV-like specification.}
 
 \item{gstar0}{set of expectations for each terms of the MTR for the
-control group.}
+control group, corresponding to the target parameter.}
 
 \item{gstar1}{set of expectations for each terms of the MTR for the
-control group.}
+control group, corresponding to the target parameter.}
 
-\item{orig.sset}{list, only used for bootstraps. The list caontains
+\item{orig.sset}{list, only used for bootstraps. The list contains
 the gamma moments for each element in the S-set, as well as the
 IV-like coefficients.}
 
@@ -186,7 +204,29 @@ value greater than 0 to allow for more conservative bounds.}
 \item{lpsolver}{character, name of the linear programming package
 in R used to obtain the bounds on the treatment effect. The
 function supports \code{'gurobi'}, \code{'cplexapi'},
-\code{'lpsolveapi'}.}
+\code{'lpsolveapi'}. The name of the solver should be provided
+with quotation marks.}
+
+\item{lpsolver.options}{list, each item of the list should
+correspond to an option specific to the LP solver selected.}
+
+\item{lpsolver.presolve}{boolean, default set to \code{TRUE}. Set
+this parameter to \code{FALSE} if presolve should be turned off
+for the LP problems.}
+
+\item{lpsolver.options.criterion}{list, each item of the list
+should correspond to an option specific to the LP solver
+selected. These options are specific for finding the minimum
+criterion.}
+
+\item{lpsolver.options.bounds}{list, each item of the list should
+correspond to an option specific to the LP solver
+selected. These options are specific for finding the bounds.}
+
+\item{smallreturnlist}{boolean, default set to \code{FALSE}. Set to
+\code{TRUE} to exclude large intermediary components
+(i.e. propensity score model, LP model, bootstrap iterations)
+from being included in the return list.}
 
 \item{noisy}{boolean, default set to \code{TRUE}. If \code{TRUE},
 then messages are provided throughout the estimation
@@ -202,28 +242,32 @@ applied when \code{lpsolver = 'gurobi'}. The output provided is
 the same as what the Gurobi API would send to the console.}
 }
 \value{
-a list. Included in the list is the minimum violation of
-    observational equivalence of the set of IV-like estimands, as
-    well as the list of matrices and vectors associated with
-    solving the LP problem.
+a list. Included in the list are estimates of the treatment
+    effect bounds; the minimum violation of observational
+    equivalence of the set of IV-like estimands; the list of
+    matrices and vectors defining the LP problem; the points used
+    to generate the audit grid, and the points where the shape
+    constraints were violated.
 }
 \description{
 This is the wrapper for running the entire audit procedure. This
 function sets up the LP problem of minimizing the violation of
 observational equivalence for the set of IV-like estimands, while
 satisfying boundedness and monotonicity constraints declared by the
-user. Rather than enforce boundedness and monotonicity hold across
-the entire support of covariates and unobservables, this procedure
-enforces the conditions over a subset of points in a grid. This
-grid corresponds to the set of values the covariates can take, and a
-subset of values of the unobservable term. The size of this grid is
-specified by the user in the function arguments. The procedure then
-goes on to check whether the constraints are satisfied at points
-off the grid. Any point where either the boundedness or
-monotonicity constraints are violated are incorporated into the
-grid, and the process is repeated until the grid incorporates the
-entire support of the covariates, or until some a maximum number of
-iterations is reached.
+user. Rather than enforce that boundedness and monotonicity hold
+across the entire support of covariates and unobservables, this
+procedure enforces the conditions over a grid of points. This grid
+corresponds to the set of values the covariates can take, and a set
+of values of the unobservable term. The size of this grid is
+specified by the user in the function arguments. The procedure
+first estimates the bounds while imposing the shape constraints for
+an initial subset of points in the grid. The procedure then goes on
+to check ('audit') whether the constraints are satisfied over the
+entire grid. Any point where either the boundedness or monotonicity
+constraints are violated are incorporated into the initial grid,
+and the process is repeated until the audit no longer finds any
+violations, or until some maximum number of iterations is
+reached.
 }
 \examples{
 dtm <- ivmte:::gendistMosquito()
@@ -233,13 +277,21 @@ dtm <- ivmte:::gendistMosquito()
 sSet <- list()
 
 ## Declare MTR formulas
-formula1 = ~ 1 + u
 formula0 = ~ 1 + u
+formula1 = ~ 1 + u
 
 ## Construct object that separates out non-spline components of MTR
 ## formulas from the spline components. The MTR functions are
 ## obtained from this object by the function 'genSSet'
 splinesList = list(removeSplines(formula0), removeSplines(formula1))
+
+## If splines are interacted with other variables, the
+## 'interactSplines' should be used.
+## splinesList <- interactSplines(splinesobj = splinesList,
+##                               m0 = formula0,
+##                               m1 = formula1,
+##                               data = data,
+##                               uname = 'u')
 
 ## Construct MTR polynomials
 polynomials0 <- polyparse(formula = formula0,
@@ -247,7 +299,7 @@ polynomials0 <- polyparse(formula = formula0,
                  uname = u,
                  as.function = FALSE)
 
-polynomials1 <- polyparse(formula = formula0,
+polynomials1 <- polyparse(formula = formula1,
                  data = dtm,
                  uname = u,
                  as.function = FALSE)
@@ -296,6 +348,8 @@ audit(data = dtm,
       uname = u,
       m0 = formula0,
       m1 = formula1,
+      pm0 = polynomials0,
+      pm1 = polynomials1,
       splinesobj = splinesList,
       vars_data = colnames(dtm),
       vars_mtr = "u",

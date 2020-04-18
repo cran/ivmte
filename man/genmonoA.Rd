@@ -5,7 +5,9 @@
 \title{Generate LP components of the monotonicity constraints}
 \usage{
 genmonoA(A0, A1, sset, uname, gridobj, gstar0, gstar1, m0.dec, m0.inc,
-  m1.dec, m1.inc, mte.dec, mte.inc)
+  m1.dec, m1.inc, mte.dec, mte.inc, solution.m0.min = NULL,
+  solution.m1.min = NULL, solution.m0.max = NULL,
+  solution.m1.max = NULL, audit.tol)
 }
 \arguments{
 \item{A0}{the matrix of values from evaluating the MTR for control
@@ -49,6 +51,37 @@ decreasing.}
 
 \item{mte.inc}{boolean, indicating whether the MTE is monotone
 increasing.}
+
+\item{solution.m0.min}{vector, the coefficients for the MTR for
+\code{D = 0} corresponding to the lower bound of the target
+parameter. If passed, this will initiate checks of shape
+constraints.}
+
+\item{solution.m1.min}{vector, the coefficients for the MTR for
+\code{D = 1} corresponding to the lower bound of the target
+parameter. If passed, this will initiate checks of shape
+constraints.}
+
+\item{solution.m0.max}{vector, the coefficients for the MTR for
+\code{D = 0} corresponding to the upper bound of the target
+parameter. If passed, this will initiate checks of shape
+constraints.}
+
+\item{solution.m1.max}{vector, the coefficients for the MTR for
+\code{D = 1} corresponding to the upper bound of the target
+parameter. If passed, this will initiate checks of shape
+constraints.}
+
+\item{audit.tol}{feasibility tolerance when performing the
+audit. By default to set to be equal to the Gurobi
+(\code{lpsolver = "gurobi"}) and CPLEX (\code{lpsolver =
+"cplexapi"}) feasibility toleraence, which is set to
+\code{1e-06} by default.  If the LP solver is lp_solve
+(\code{lpsolver = "lpsolveapi"}), this parameter is set to
+\code{1e-06} by default. This parameter should only be changed
+if the feasibility tolerance of the LP solver is changed, or if
+numerical issues result in discrepancies between the LP
+solver's feasibility check and the audit.}
 }
 \value{
 constraint matrix for the LP problem. The matrix pertains
@@ -58,7 +91,7 @@ constraint matrix for the LP problem. The matrix pertains
 \description{
 This function generates the matrix and vectors associated with the
 monotonicity constraints declared by the user. It takes in a grid
-of the covariates on which we define the LP constraints, and then
+of the covariates on which the LP constraints are defined, and then
 calculates the values of the MTR and MTE over the grid. The
 matrices characterizing the monotonicity conditions can then be
 obtained by taking first differences over the grid of the
