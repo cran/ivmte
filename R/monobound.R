@@ -21,6 +21,7 @@
 #'     mapping the elements in the support of the covariates to
 #'     \code{index}.
 gengrid <- function(index, xsupport, usupport, uname) {
+    if (length(usupport) == 0) usupport <- 0
     subsupport <- xsupport[index, ]
     if (is.null(dim(subsupport))) {
         subsupport <- data.frame(subsupport)
@@ -42,10 +43,10 @@ gengrid <- function(index, xsupport, usupport, uname) {
                 map = map))
 }
 
-#' Generating the LP constraint matrix for bounds
+#' Generating the constraint matrix
 #'
 #' This function generates the component of the constraint matrix in
-#' the LP problem pertaining to the lower and upper bounds on the MTRs
+#' the LP/QCQP problem pertaining to the lower and upper bounds on the MTRs
 #' and MTEs. These bounds are declared by the user.
 #' @param A0 the matrix of values from evaluating the MTR for control
 #'     observations over the grid generated to perform the audit. This
@@ -84,16 +85,14 @@ gengrid <- function(index, xsupport, usupport, uname) {
 #'     parameter. If passed, this will initiate checks of shape
 #'     constraints.
 #' @param audit.tol feasibility tolerance when performing the
-#'     audit. By default to set to be equal to the Gurobi
-#'     (\code{lpsolver = "gurobi"}) and CPLEX (\code{lpsolver =
-#'     "cplexapi"}) feasibility toleraence, which is set to
-#'     \code{1e-06} by default.  If the LP solver is lp_solve
-#'     (\code{lpsolver = "lpsolveapi"}), this parameter is set to
-#'     \code{1e-06} by default. This parameter should only be changed
-#'     if the feasibility tolerance of the LP solver is changed, or if
-#'     numerical issues result in discrepancies between the LP
-#'     solver's feasibility check and the audit.
-#' @return a constraint matrix for the LP problem, the associated
+#'     audit. By default to set to be equal \code{1e-06}. This
+#'     parameter should only be changed if the feasibility tolerance
+#'     of the solver is changed, or if numerical issues result in
+#'     discrepancies between the solver's feasibility check and the
+#'     audit.
+#' @param direct boolean, set to \code{TRUE} if the direct MTR
+#'     regression is used.
+#' @return a constraint matrix for the LP/QCQP problem, the associated
 #'     vector of inequalities, and the RHS vector in the inequality
 #'     constraint. The objects pertain only to the boundedness
 #'     constraints declared by the user.
@@ -101,21 +100,26 @@ genboundA <- function(A0, A1, sset, gridobj, uname, m0.lb, m0.ub,
                       m1.lb, m1.ub, mte.lb, mte.ub,
                       solution.m0.min = NULL, solution.m1.min = NULL,
                       solution.m0.max = NULL, solution.m1.max = NULL,
-                      audit.tol) {
+                      audit.tol, direct = FALSE) {
     if (!is.null(solution.m0.min) && !is.null(solution.m1.min) &&
         !is.null(solution.m0.max) && !is.null(solution.m1.max)) {
         audit <- TRUE
     } else {
         audit <- FALSE
     }
-    sn <- length(sset)
     grid <- gridobj$grid
     gridmap <- gridobj$map
     namesA0 <- colnames(A0)
     namesA1 <- colnames(A1)
-    namesA  <- c(seq(1, 2 * sn),
-                 namesA0,
-                 namesA1)
+    if (!direct) {
+        sn <- length(sset)
+        namesA  <- c(seq(1, 2 * sn),
+                     namesA0,
+                     namesA1)
+    } else {
+        sn <- 0
+        namesA <- c(namesA0, namesA1)
+    }
     ## Generate place holders for the matrices representing monotonicity
     lbdA0  <- NULL
     lbdA1  <- NULL
@@ -406,6 +410,14 @@ genboundA <- function(A0, A1, sset, gridobj, uname, m0.lb, m0.ub,
                                      diff = diff)
             violateMat$group.name <- paste0(violateMat$type, ".",
                                             violateMat$grid.x)
+            violateMat$type.string <- factor(violateMat$type,
+                                            levels = seq(6),
+                                            labels = c('m0.lb',
+                                                       'm1.lb',
+                                                       'mte.lb',
+                                                       'm0.ub',
+                                                       'm1.ub',
+                                                       'mte.ub'))
             return(list(bdA = bdA,
                         violateMat = violateMat))
         } else {
@@ -414,11 +426,11 @@ genboundA <- function(A0, A1, sset, gridobj, uname, m0.lb, m0.ub,
     }
 }
 
-#' Generate LP components of the monotonicity constraints
+#' Generate components of the monotonicity constraints
 #'
 #' This function generates the matrix and vectors associated with the
 #' monotonicity constraints declared by the user. It takes in a grid
-#' of the covariates on which the LP constraints are defined, and then
+#' of the covariates on which the shape constraints are defined, and then
 #' calculates the values of the MTR and MTE over the grid. The
 #' matrices characterizing the monotonicity conditions can then be
 #' obtained by taking first differences over the grid of the
@@ -470,16 +482,14 @@ genboundA <- function(A0, A1, sset, gridobj, uname, m0.lb, m0.ub,
 #'     parameter. If passed, this will initiate checks of shape
 #'     constraints.
 #' @param audit.tol feasibility tolerance when performing the
-#'     audit. By default to set to be equal to the Gurobi
-#'     (\code{lpsolver = "gurobi"}) and CPLEX (\code{lpsolver =
-#'     "cplexapi"}) feasibility toleraence, which is set to
-#'     \code{1e-06} by default.  If the LP solver is lp_solve
-#'     (\code{lpsolver = "lpsolveapi"}), this parameter is set to
-#'     \code{1e-06} by default. This parameter should only be changed
-#'     if the feasibility tolerance of the LP solver is changed, or if
-#'     numerical issues result in discrepancies between the LP
-#'     solver's feasibility check and the audit.
-#' @return constraint matrix for the LP problem. The matrix pertains
+#'     audit. By default to set to be equal \code{1e-06}. This
+#'     parameter should only be changed if the feasibility tolerance
+#'     of the solver is changed, or if numerical issues result in
+#'     discrepancies between the solver's feasibility check and the
+#'     audit.
+#' @param direct boolean, set to \code{TRUE} if the direct MTR
+#'     regression is used.
+#' @return constraint matrix for the LP/QCQP problem. The matrix pertains
 #'     only to the monotonicity conditions on the MTR and MTE declared
 #'     by the user.
 genmonoA <- function(A0, A1, sset, uname, gridobj, gstar0, gstar1,
@@ -487,7 +497,7 @@ genmonoA <- function(A0, A1, sset, uname, gridobj, gstar0, gstar1,
                      mte.inc,
                      solution.m0.min = NULL, solution.m1.min = NULL,
                      solution.m0.max = NULL, solution.m1.max = NULL,
-                     audit.tol) {
+                     audit.tol, direct) {
     if (!is.null(solution.m0.min) && !is.null(solution.m1.min) &&
         !is.null(solution.m0.max) && !is.null(solution.m1.max)) {
         audit <- TRUE
@@ -529,12 +539,21 @@ genmonoA <- function(A0, A1, sset, uname, gridobj, gstar0, gstar1,
     umap <- NULL
     ## This matrix should include all the additions 0s on the left
     ## columns
-    sn <- length(sset)
     namesA0 <- colnames(A0)
     namesA1 <- colnames(A1)
-    namesA  <- c(seq(1, 2 * sn),
-                 namesA0,
-                 namesA1)
+    if (!direct) {
+        sn <- length(sset)
+        namesA  <- c(seq(1, 2 * sn),
+                     namesA0,
+                     namesA1)
+    } else {
+        sn <- 0
+        namesA  <- c(namesA0,
+                     namesA1)
+        drY <- sset$s1$ys
+        drX <- cbind(sset$s1$g0, sset$s1$g1)
+        drQ <- sset$s1$Q
+    }
     ## The functions below generate the constraint matrix, the sense
     ## vector, and the RHS vector associated with the monotonicity
     ## constraints for m0, m1, and the mte. In addition, mappings to
@@ -875,6 +894,14 @@ genmonoA <- function(A0, A1, sset, uname, gridobj, gstar0, gstar1,
                                      diff = diff)
             violateMat$group.name <- paste0(violateMat$type, ".",
                                             violateMat$grid.x)
+            violateMat$type.string <- factor(violateMat$type,
+                                             levels = seq(7, 12),
+                                             labels = c('m0.inc',
+                                                        'm0.dec',
+                                                        'm1.inc',
+                                                        'm1.dec',
+                                                        'mte.inc',
+                                                        'mte.dec'))
             return(list(monoA = monoA,
                         violateMat = violateMat))
         } else {
@@ -896,7 +923,7 @@ genmonoA <- function(A0, A1, sset, uname, gridobj, gstar0, gstar1,
 #'     constraints.
 #' @return a list containing a unified constraint matrix, unified
 #'     vector of inequalities, and unified RHS vector for the
-#'     boundedness and monotonicity constraints of an LP problem.
+#'     boundedness and monotonicity constraints of an LP/QCQP problem.
 combinemonobound <- function(bdA, monoA) {
     mbA    <- NULL
     mbs    <- NULL
@@ -930,7 +957,11 @@ combinemonobound <- function(bdA, monoA) {
 #'
 #' This is a wrapper function generating the matrices and vectors
 #' associated with the monotonicity and boundedness constraints
-#' declared by the user.
+#' declared by the user. Since this function generates all the
+#' components required for the shape constraints, it is also the
+#' function that performs the audit. That is, MTR coefficients are
+#' passed, then this function will verify whether they satisfy the
+#' shape constraints.
 #' @param pm0 A list of the monomials in the MTR for d = 0.
 #' @param pm1 A list of the monomials in the MTR for d = 1.
 #' @param support a matrix for the support of all variables that enter
@@ -1000,18 +1031,16 @@ combinemonobound <- function(bdA, monoA) {
 #'     parameter. If passed, this will initiate checks of shape
 #'     constraints.
 #' @param audit.tol feasibility tolerance when performing the
-#'     audit. By default to set to be equal to the Gurobi
-#'     (\code{lpsolver = "gurobi"}) and CPLEX (\code{lpsolver =
-#'     "cplexapi"}) feasibility toleraence, which is set to
-#'     \code{1e-06} by default.  If the LP solver is lp_solve
-#'     (\code{lpsolver = "lpsolveapi"}), this parameter is set to
-#'     \code{1e-06} by default. This parameter should only be changed
-#'     if the feasibility tolerance of the LP solver is changed, or if
-#'     numerical issues result in discrepancies between the LP
-#'     solver's feasibility check and the audit.
+#'     audit. By default to set to be equal \code{1e-06}. This
+#'     parameter should only be changed if the feasibility tolerance
+#'     of the solver is changed, or if numerical issues result in
+#'     discrepancies between the solver's feasibility check and the
+#'     audit.
+#' @param direct boolean, set to \code{TRUE} if the direct MTR
+#'     regression is used.
 #' @return a list containing a unified constraint matrix, unified
 #'     vector of inequalities, and unified RHS vector for the
-#'     boundedness and monotonicity constraints of an LP problem.
+#'     boundedness and monotonicity constraints of an LP/QCQP problem.
 genmonoboundA <- function(pm0, pm1, support, grid_index, uvec,
                           splinesobj, monov, uname, m0, m1, sset,
                           gstar0, gstar1, m0.lb, m0.ub, m1.lb, m1.ub,
@@ -1020,7 +1049,8 @@ genmonoboundA <- function(pm0, pm1, support, grid_index, uvec,
                           solution.m0.min = NULL,
                           solution.m1.min = NULL,
                           solution.m0.max = NULL,
-                          solution.m1.max = NULL, audit.tol) {
+                          solution.m1.max = NULL, audit.tol,
+                          direct) {
     if (!is.null(solution.m0.min) && !is.null(solution.m1.min) &&
         !is.null(solution.m0.max) && !is.null(solution.m1.max)) {
         audit <- TRUE
@@ -1077,6 +1107,7 @@ genmonoboundA <- function(pm0, pm1, support, grid_index, uvec,
     u1unique <- uvec[!duplicated(fullU1mat)]
     ## Now update U grid to only include non-redundant values
     uvec <- sort(unique(c(u0unique, u1unique)))
+    if (length(uvec) == 0) uvec <- 0
     rm(u0mat, u1mat,
        us0mat, us1mat,
        fullU0mat, fullU1mat,
@@ -1206,7 +1237,7 @@ genmonoboundA <- function(pm0, pm1, support, grid_index, uvec,
                                               gsub("\\(", "\\\\(", q))
                                     namesApos <-
                                         as.integer(
-                                            grepl(paste0(q, "[[:alnum:]]*"),
+                                            grepl(paste0(q, "[0-9A-Za-z._]*"),
                                                   namesA))
                                 } else {
                                     namesApos <- as.integer(namesA == q)
@@ -1260,6 +1291,24 @@ genmonoboundA <- function(pm0, pm1, support, grid_index, uvec,
     }
     A0 <- A0[order(A0[, ".grid.order"]), ]
     A1 <- A1[order(A1[, ".grid.order"]), ]
+    ## If both m0 and m1 are just the intercepts, then the objects A0
+    ## and A1 will not be matrices. This will cause an error when
+    ## trying to account for column names. So convert A0 and A1 into
+    ## matrices.
+    if (is.null(dim(A0))) {
+        tmpNames <- names(A0)
+        A0 <- matrix(A0, nrow = 1)
+        colnames(A0) <- tmpNames
+        rownames(A0) <- 1
+        rm(tmpNames)
+    }
+    if (is.null(dim(A1))) {
+        tmpNames <- names(A1)
+        A1 <- matrix(A1, nrow = 1)
+        colnames(A1) <- tmpNames
+        rownames(A1) <- 1
+        rm(tmpNames)
+    }
     ## Rename columns so they match with the names in vectors gstar0
     ## and gstar1 (the problem stems from the unpredictable ordering
     ## of variables in interaction terms).
@@ -1338,7 +1387,7 @@ genmonoboundA <- function(pm0, pm1, support, grid_index, uvec,
                         "mte.lb", "mte.ub",
                         "solution.m0.min", "solution.m1.min",
                         "solution.m0.max", "solution.m1.max",
-                        "audit.tol")
+                        "audit.tol", "direct")
         boundAcall <- modcall(call,
                               newcall = genboundA,
                               keepargs = boundlist,
@@ -1352,23 +1401,25 @@ genmonoboundA <- function(pm0, pm1, support, grid_index, uvec,
     if (hasArg(m0.inc)  | hasArg(m0.dec) |
         hasArg(m1.inc)  | hasArg(m1.dec) |
         hasArg(mte.inc) | hasArg(mte.dec)) {
-        monolist  <- c("m0.dec", "m0.inc",
-                       "m1.dec", "m1.inc",
-                       "mte.dec", "mte.inc",
-                       "solution.m0.min", "solution.m1.min",
-                       "solution.m0.max", "solution.m1.max",
-                       "audit.tol")
-        monoAcall <- modcall(call,
-                             newcall = genmonoA,
-                             keepargs = monolist,
-                             newargs = list(A0 = quote(A0),
-                                            A1 = quote(A1),
-                                            sset = quote(sset),
-                                            gridobj = quote(gridobj),
-                                            uname = uname,
-                                            gstar0 = quote(gstar0),
-                                            gstar1 = quote(gstar1)))
-        monoA <- eval(monoAcall)
+        if (!(length(uvec) == 1 && uvec == 0)) {
+            monolist  <- c("m0.dec", "m0.inc",
+                           "m1.dec", "m1.inc",
+                           "mte.dec", "mte.inc",
+                           "solution.m0.min", "solution.m1.min",
+                           "solution.m0.max", "solution.m1.max",
+                           "audit.tol", "direct")
+            monoAcall <- modcall(call,
+                                 newcall = genmonoA,
+                                 keepargs = monolist,
+                                 newargs = list(A0 = quote(A0),
+                                                A1 = quote(A1),
+                                                sset = quote(sset),
+                                                gridobj = quote(gridobj),
+                                                uname = uname,
+                                                gstar0 = quote(gstar0),
+                                                gstar1 = quote(gstar1)))
+            monoA <- eval(monoAcall)
+        }
     }
     if (audit) {
         ## Return violation matrices, if the function is used to

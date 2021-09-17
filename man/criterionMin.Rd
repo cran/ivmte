@@ -4,7 +4,7 @@
 \alias{criterionMin}
 \title{Minimizing violation of observational equivalence}
 \usage{
-criterionMin(env, sset, lpsolver, lpsolver.options, debug = FALSE)
+criterionMin(env, sset, solver, solver.options, rescale = FALSE, debug = FALSE)
 }
 \arguments{
 \item{env}{environment containing the matrices defining the LP
@@ -13,16 +13,21 @@ problem.}
 \item{sset}{A list of IV-like estimates and the corresponding gamma
 terms.}
 
-\item{lpsolver}{string, name of the package used to solve the LP
+\item{solver}{string, name of the package used to solve the LP
 problem.}
 
-\item{lpsolver.options}{list, each item of the list should
-correspond to an option specific to the LP solver selected.}
+\item{solver.options}{list, each item of the list should correspond
+to an option specific to the LP solver selected.}
+
+\item{rescale}{boolean, set to \code{TRUE} if the MTR components
+should be rescaled to improve stability in the LP/QP/QCP
+optimization.}
 
 \item{debug}{boolean, indicates whether or not the function should
 provide output when obtaining bounds. The option is only
-applied when \code{lpsolver = 'gurobi'}. The output provided is
-the same as what the Gurobi API would send to the console.}
+applied when \code{solver = 'gurobi'} or \code{solver =
+'rmosek'}. The output provided is the same as what the Gurobi
+API would send to the console.}
 }
 \value{
 A list including the minimum violation of observational
@@ -33,7 +38,7 @@ A list including the minimum violation of observational
 Given a set of IV-like estimates and the set of matrices/vectors
 defining an LP problem, this function minimizes the violation of
 observational equivalence under the L1 norm. The LP model must be
-passed as an environment variable, under the entry \code{$lpobj}.
+passed as an environment variable, under the entry \code{$model}.
 See \code{\link{lpSetup}}.
 }
 \examples{
@@ -83,8 +88,7 @@ targetGamma <- genTarget(treat = "d",
                          splinesobj = splinesList,
                          pmodobj = propensityObj,
                          pm0 = polynomials0,
-                         pm1 = polynomials1,
-                         point = FALSE)
+                         pm1 = polynomials1)
 
 ## Construct S-set. which contains the coefficients and weights
 ## corresponding to various IV-like estimands
@@ -117,27 +121,27 @@ rhs <- c(rep(0.2, 11), rep(0.8, 11))
 ## Construct LP object to be interpreted and solved by
 ## lpSolveAPI. Note that an environment has to be created for the LP
 ## object. The matrices defining the shape restrictions must be stored
-## as a list under the entry \\code{$mbobj} in the environment.
-lpEnv <- new.env()
-lpEnv$mbobj <- list(mbA = A,
+## as a list under the entry \code{$mbobj} in the environment.
+modelEnv <- new.env()
+modelEnv$mbobj <- list(mbA = A,
                     mbs = sense,
                     mbrhs = rhs)
 ## Convert the matrices defining the shape constraints into a format
 ## that is suitable for the LP solver.
-lpSetup(env = lpEnv,
+lpSetup(env = modelEnv,
         sset = sSet,
-        lpsolver = "lpsolveapi")
+        solver = "lpsolveapi")
 ## Setup LP model so that it will minimize the criterion
-lpSetupCriterion(env = lpEnv,
+lpSetupCriterion(env = modelEnv,
                 sset = sSet)
 ## Declare any LP solver options as a list.
 lpOptions <- optionsLpSolveAPI(list(epslevel = "tight"))
 ## Minimize the criterion.
-obseqMin <- criterionMin(env = lpEnv,
+obseqMin <- criterionMin(env = modelEnv,
                          sset = sSet,
-                         lpsolver = "lpsolveapi",
-                         lpsolver.options = lpOptions)
+                         solver = "lpsolveapi",
+                         solver.options = lpOptions)
 obseqMin
-cat("The minimum criterion is",  obseqMin$obj, "\\n")
+cat("The minimum criterion is",  obseqMin$obj, "\n")
 
 }

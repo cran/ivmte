@@ -1,4 +1,4 @@
-## ----setup, include = FALSE----------------------------------------------
+## ----setup, include = FALSE---------------------------------------------------
 knitr::opts_chunk$set(
   collapse = TRUE,
   comment = "#>",
@@ -13,27 +13,27 @@ require(ggplot2)
 require(gridExtra)
 require(splines2)
 
-## ----eval = FALSE--------------------------------------------------------
+## ----eval = FALSE-------------------------------------------------------------
 #  install.packages("ivmte")
 
-## ----eval = FALSE--------------------------------------------------------
+## ----eval = FALSE-------------------------------------------------------------
 #  devtools::install_github("jkcshea/ivmte")
 
-## ---- drawData-ae--------------------------------------------------------
+## ---- drawData-ae-------------------------------------------------------------
 library(ivmte)
 knitr::kable(head(AE, n = 10))
 
-## ---- ols, results='markdown'--------------------------------------------
+## ---- ols, results='markdown'-------------------------------------------------
 lm(data = AE, worked ~ morekids)
 
-## ---- fs, results='markdown'---------------------------------------------
+## ---- fs, results='markdown'--------------------------------------------------
 lm(data = AE, morekids ~ samesex)
 
-## ---- ivreg, results='markdown'------------------------------------------
+## ---- ivreg, results='markdown'-----------------------------------------------
 library("AER")
 ivreg(data = AE, worked ~ morekids | samesex )
 
-## ---- drawData-sim, results='markdown'-----------------------------------
+## ---- drawData-sim, results='markdown'----------------------------------------
 set.seed(1)
 n <- 5000
 u <- runif(n)
@@ -54,82 +54,82 @@ y <- d*y1 + (1-d)*y0
 ivmteSimData <- data.frame(y,d,z,x)
 knitr::kable(head(ivmteSimData, n = 10))
 
-## ---- syntax, eval = FALSE-----------------------------------------------
+## ---- syntax, eval = FALSE----------------------------------------------------
 #  library("ivmte")
 #  results <- ivmte(data = AE,
 #                   target = "att",
 #                   m0 = ~ u + yob,
 #                   m1 = ~ u + yob,
 #                   ivlike = worked ~ morekids + samesex + morekids*samesex,
-#                   propensity = morekids ~ samesex,
+#                   propensity = morekids ~ samesex + yob,
 #                   noisy = TRUE)
 
-## ---- syntaxrun----------------------------------------------------------
+## ---- syntaxrun---------------------------------------------------------------
 results <- ivmte(data = AE,
                  target = "att",
                  m0 = ~ u + yob,
                  m1 = ~ u + yob,
                  ivlike = worked ~ morekids + samesex + morekids*samesex,
-                 propensity = morekids ~ samesex, 
+                 propensity = morekids ~ samesex + yob,
                  noisy = TRUE)
 
-## ---- syntaxrun.quiet----------------------------------------------------
+## ---- syntaxrun.quiet---------------------------------------------------------
 results <- ivmte(data = AE,
                  target = "att",
                  m0 = ~ u + yob,
                  m1 = ~ u + yob,
                  ivlike = worked ~ morekids + samesex + morekids*samesex,
-                 propensity = morekids ~ samesex,
+                 propensity = morekids ~ samesex + yob,
                  noisy = FALSE)
 results
 cat(results$messages, sep = "\n")
 
-## ---- mtrbasics----------------------------------------------------------
+## ---- mtrbasics---------------------------------------------------------------
 args <- list(data = AE,
              ivlike =  worked ~ morekids + samesex + morekids*samesex,
              target = "att",
              m0 = ~ u + I(u^2) + yob + u*yob,
              m1 = ~ u + I(u^2) + I(u^3) + yob + u*yob,
-             propensity = morekids ~ samesex)
+             propensity = morekids ~ samesex + yob)
 r <- do.call(ivmte, args)
 r
 
-## ---- non.polynomial.u.error, error = TRUE-------------------------------
+## ---- non.polynomial.u.error, error = TRUE------------------------------------
 args[["m0"]] <- ~ log(u) + yob
 r <- do.call(ivmte, args)
 
-## ---- uname--------------------------------------------------------------
+## ---- uname-------------------------------------------------------------------
 args[["m0"]] <- ~ v + I(v^2) + yob + v*yob
 args[["m1"]] <- ~ v + I(v^2) + I(v^3) + yob + v*yob
 args[["uname"]] <- "v"
 r <- do.call(ivmte, args)
 r
 
-## ---- factor.error, eval = FALSE-----------------------------------------
+## ---- factor.error, eval = FALSE----------------------------------------------
 #  args[["uname"]] <- ~ "u"
 #  args[["m0"]] <- ~ u + yob
 #  args[["m1"]] <- ~ u + factor(yob)55 + factor(yob)60
 
-## ---- factor.ok.prepare, echo = FALSE------------------------------------
+## ---- factor.ok.prepare, echo = FALSE-----------------------------------------
 args[["uname"]] <- ~ "u"
 args[["m0"]] <- ~ u + yob
 
-## ---- factor.ok----------------------------------------------------------
+## ---- factor.ok---------------------------------------------------------------
 args[["m1"]] <- ~ u + (yob == 55) + (yob == 60)
 r <- do.call(ivmte, args)
 r
 
-## ---- spline-------------------------------------------------------------
+## ---- spline------------------------------------------------------------------
 args <- list(data = AE,
              ivlike =  worked ~ morekids + samesex + morekids*samesex,
              target = "att",
              m0 = ~ u + uSplines(degree = 1, knots = c(.2, .4, .6, .8)) + yob,
              m1 = ~ uSplines(degree = 2, knots = c(.1, .3, .5, .7))*yob,
-             propensity = morekids ~ samesex)
+             propensity = morekids ~ samesex + yob)
 r <- do.call(ivmte, args)
 r
 
-## ---- bounds-------------------------------------------------------------
+## ---- bounds------------------------------------------------------------------
 args <- list(data = AE,
              ivlike =  worked ~ morekids + samesex + morekids*samesex,
              target = "att",
@@ -138,24 +138,24 @@ args <- list(data = AE,
              m1.inc = TRUE,
              m0.inc = TRUE,
              mte.dec = TRUE,
-             propensity = morekids ~ samesex)
+             propensity = morekids ~ samesex + yob)
 r <- do.call(ivmte, args)
 r
 
-## ---- conventional.tgt.params--------------------------------------------
+## ---- conventional.tgt.params-------------------------------------------------
 args <- list(data = AE,
              ivlike =  worked ~ morekids + samesex + morekids*samesex,
              target = "att",
              m0 = ~ u + I(u^2) + yob + u*yob,
              m1 = ~ u + I(u^2) + I(u^3) + yob + u*yob,
-             propensity = morekids ~ samesex)
+             propensity = morekids ~ samesex + yob)
 r <- do.call(ivmte, args)
 r
 args[["target"]] <- "ate"
 r <- do.call(ivmte, args)
 r
 
-## ---- late---------------------------------------------------------------
+## ---- late--------------------------------------------------------------------
 args <- list(data = ivmteSimData,
              ivlike =  y ~ d + z + d*z,
              target = "late",
@@ -167,7 +167,7 @@ args <- list(data = ivmteSimData,
 r <- do.call(ivmte, args)
 r
 
-## ---- late.cond----------------------------------------------------------
+## ---- late.cond---------------------------------------------------------------
 args[["late.X"]] = c(x = 2)
 r <- do.call(ivmte, args)
 r
@@ -175,7 +175,7 @@ args[["late.X"]] = c(x = 8)
 r <- do.call(ivmte, args)
 r
 
-## ---- genlate------------------------------------------------------------
+## ---- genlate-----------------------------------------------------------------
 args <- list(data = ivmteSimData,
              ivlike =  y ~ d + z + d*z,
              target = "genlate",
@@ -191,12 +191,12 @@ args[["genlate.ub"]] <- .42
 r <- do.call(ivmte, args)
 r
 
-## ---- genlate.cond-------------------------------------------------------
+## ---- genlate.cond------------------------------------------------------------
 args[["late.X"]] <- c(x = 2)
 r <- do.call(ivmte, args)
 r
 
-## ---- custom.weights-----------------------------------------------------
+## ---- custom.weights----------------------------------------------------------
 pmodel <- r$propensity$model # returned from the previous run of ivmte
 xeval = 2 # x = xeval is the group that is conditioned on
 px <- mean(ivmteSimData$x == xeval) # probability that x = xeval
@@ -240,7 +240,7 @@ args <- list(data = ivmteSimData,
 r <- do.call(ivmte, args)
 r
 
-## ---- multi.ivlike-------------------------------------------------------
+## ---- multi.ivlike------------------------------------------------------------
 args <- list(data = ivmteSimData,
              ivlike =  c(y ~ (z == 1) + (z == 2) + (z == 3) + x,
                          y ~ d + x,
@@ -252,18 +252,17 @@ args <- list(data = ivmteSimData,
 r <- do.call(ivmte, args)
 r
 
-## ---- ivlike.components--------------------------------------------------
+## ---- ivlike.components-------------------------------------------------------
 args[["components"]] <- l(c(intercept, x), c(d), )
 r <- do.call(ivmte, args)
 r
 
-## ---- l.example, error = TRUE--------------------------------------------
+## ---- l.example, error = TRUE-------------------------------------------------
 args[["components"]] <- list(c(intercept, x), c(d), )
 args[["components"]] <- list(c("intercept", "x"), c("d"), "")
 r <- do.call(ivmte, args)
-r
 
-## ---- ivlike.subsets-----------------------------------------------------
+## ---- ivlike.subsets----------------------------------------------------------
 args <- list(data = ivmteSimData,
              ivlike =  c(y ~ z + x,
                          y ~ d + x,
@@ -276,7 +275,7 @@ args <- list(data = ivmteSimData,
 r <- do.call(ivmte, args)
 r
 
-## ---- pscore-------------------------------------------------------------
+## ---- pscore------------------------------------------------------------------
 results <- ivmte(data = AE,
                  target = "att",
                  m0 = ~ u + yob,
@@ -286,44 +285,49 @@ results <- ivmte(data = AE,
                  link = "probit")
 results
 
-## ---- point.id-----------------------------------------------------------
+## ---- point.id----------------------------------------------------------------
 args <- list(data = ivmteSimData,
              ivlike =  y ~ d + factor(z),
              target = "ate",
              m0 = ~ u,
              m1 = ~ u,
-             propensity = d ~ factor(z))
-r <- do.call(ivmte, args)
-args[["point"]] <- TRUE
+             propensity = d ~ factor(z),
+             point = TRUE)
 r <- do.call(ivmte, args)
 r
 
-## ---- partial.ci---------------------------------------------------------
+## ---- point.id.absolute-------------------------------------------------------
+args$point <- FALSE
+args$criterion.tol <- 0
+r <- do.call(ivmte, args)
+r
+
+## ---- partial.ci--------------------------------------------------------------
 r <- ivmte(data = AE,
            target = "att",
            m0 = ~ u + yob,
            m1 = ~ u + yob,
            ivlike = worked ~ morekids + samesex + morekids*samesex,
-           propensity = morekids ~ samesex,
+           propensity = morekids ~ samesex + yob,
            bootstraps = 50)
 summary(r)
 
-## ---- partial.ci.show----------------------------------------------------
+## ---- partial.ci.show---------------------------------------------------------
 r$bounds.ci
 
-## ---- bootstrap.data, eval = TRUE----------------------------------------
+## ---- bootstrap.data, eval = TRUE---------------------------------------------
 head(r$bounds.bootstrap)
 
-## ---- bootstrap.plot, eval = TRUE, echo = FALSE--------------------------
+## ---- bootstrap.plot, eval = TRUE, echo = FALSE-------------------------------
 bootstraps <- data.frame(type = rep(c('lb', 'ub'), each = 50),
                          value = c(r$bounds.bootstraps[, 1],
                                    r$bounds.bootstraps[, 2]))
 ggplot(data = bootstraps,
-       aes(x = value, color = type, fill = type)) + 
-    geom_histogram(position = "dodge", alpha = 0.5, binwidth = 0.05) + 
+       aes(x = value, color = type, fill = type)) +
+    geom_histogram(position = "dodge", alpha = 0.5, binwidth = 0.05) +
     geom_vline(xintercept = r$bounds[1],
                linetype = "dashed", size = 1.5, color = "orange") +
-    geom_vline(xintercept = r$bounds[2], 
+    geom_vline(xintercept = r$bounds[2],
                linetype = "dashed", size = 1.5, color = "lightskyblue") +
     ## Labeling options
     labs(x = "Bound",
@@ -344,7 +348,7 @@ ggplot(data = bootstraps,
     scale_fill_manual("", values = c("orange", "lightskyblue"),
                       labels = c(" Lower bound   ", " Upper bound "))
 
-## ---- point.id.bootstrap-------------------------------------------------
+## ---- point.id.bootstrap------------------------------------------------------
 args <- list(data = AE,
              target = "att",
              m0 = ~ u,
@@ -356,7 +360,7 @@ args <- list(data = AE,
 r <- do.call(ivmte, args)
 summary(r)
 
-## ---- misspecification.test----------------------------------------------
+## ---- misspecification.test---------------------------------------------------
 args <- list(data = ivmteSimData,
              ivlike =  y ~ d + factor(z),
              target = "ate",
@@ -367,14 +371,14 @@ args <- list(data = ivmteSimData,
              propensity = d ~ factor(z),
              bootstraps = 50)
 r <- do.call(ivmte, args)
-r
+summary(r)
 
 args[["ivlike"]] <- y ~ d + factor(z) + d*factor(z) # many more moments
 args[["point"]] <- TRUE
 r <- do.call(ivmte, args)
-r
+summary(r)
 
-## ---- draw.specification, eval = TRUE------------------------------------
+## ---- draw.specification, eval = TRUE-----------------------------------------
 args <- list(data = AE,
              ivlike =  worked ~ morekids + samesex + morekids*samesex,
              target = "att",
@@ -387,14 +391,14 @@ args <- list(data = AE,
 r <- do.call(ivmte, args)
 r
 
-## ---- draw.m0.splines, eval = TRUE---------------------------------------
+## ---- draw.m0.splines, eval = TRUE--------------------------------------------
 specs0 <- r$splines.dict$m0[[1]]
 specs0
 
-## ---- draw.m0.coef, eval = TRUE------------------------------------------
+## ---- draw.m0.coef, eval = TRUE-----------------------------------------------
 r$gstar.coef$min.g0
 
-## ---- draw.design.m0, eval = TRUE----------------------------------------
+## ---- draw.design.m0, eval = TRUE---------------------------------------------
 uSeq <- seq(0, 1, by = 0.01)
 dmat0 <- bSpline(x = uSeq,
                       degree = specs0$degree,
@@ -404,7 +408,7 @@ dmat0 <- bSpline(x = uSeq,
 m0.min <- dmat0 %*% r$gstar.coef$min.g0
 m0.max <- dmat0 %*% r$gstar.coef$max.g0
 
-## ---- draw.design.m1, eval = TRUE, echo = FALSE--------------------------
+## ---- draw.design.m1, eval = TRUE, echo = FALSE-------------------------------
 specs1 <- r$splines.dict$m1[[1]]
 dmat1 <- bSpline(x = uSeq,
                  degree = specs1$degree,
@@ -414,7 +418,7 @@ dmat1 <- bSpline(x = uSeq,
 m1.min <- dmat1 %*% r$gstar.coef$min.g1
 m1.max <- dmat1 %*% r$gstar.coef$max.g1
 
-## ---- eval = TRUE--------------------------------------------------------
+## ---- eval = TRUE-------------------------------------------------------------
 mte.min <- m1.min - m0.min
 mte.max <- m1.max - m0.max
 
@@ -471,7 +475,7 @@ for (i in 1:6) {
 }
 grid.arrange(figure1, figure2, figure3, figure4, figure5, figure6, ncol=2)
 
-## ---- weights.matrix, eval = TRUE, echo = TRUE---------------------------
+## ---- weights.matrix, eval = TRUE, echo = TRUE--------------------------------
 ## Target weights
 w1 <- cbind(r$gstar.weights$w1$lb,
                   r$gstar.weights$w1$ub,
@@ -496,11 +500,11 @@ colnames(w1) <-
     colnames(sw3) <-
     colnames(sw4) <- c("lb", "ub", "mp")
 
-## ---- weights.prop, eval = TRUE, echo = TRUE-----------------------------
+## ---- weights.prop, eval = TRUE, echo = TRUE----------------------------------
 pscore <- sort(unique(w1[, "ub"]))
 pscore
 
-## ---- weights.data, eval = TRUE, echo = TRUE-----------------------------
+## ---- weights.data, eval = TRUE, echo = TRUE----------------------------------
 avg1 <- NULL ## The data.frame that will contain the average weights
 i <- 0 ## An index for the type of weight
 for (j in c('w1', 'sw1', 'sw2', 'sw3', 'sw4')) {
@@ -520,10 +524,10 @@ for (j in c('w1', 'sw1', 'sw2', 'sw3', 'sw4')) {
 }
 avg1 <- data.frame(avg1)
 
-## ---- evaluate = TRUE, echo = FALSE--------------------------------------
+## ---- evaluate = TRUE, echo = FALSE-------------------------------------------
 knitr::kable(avg1)
 
-## ---- weights.plot1, eval = TRUE, echo = FALSE---------------------------
+## ---- weights.plot1, eval = TRUE, echo = FALSE--------------------------------
 ## Account for overlap
 avg1[avg1$lb > 0 & avg1$lb < pscore[2] & avg1$s == 2, ]$avgWeight <- -0.07
 avg1[avg1$lb > pscore[1] & avg1$s == 2, ]$avgWeight <- -0.07
@@ -559,7 +563,7 @@ wFigure1 <- ggplot() +
                        breaks = c("Target", "More kids", "Same sex", "More kids x Same sex"),
                        values = c("lightskyblue", "orange", "olivedrab", "gray60"))
 
-## ---- weights.plot0, eval = TRUE, echo = FALSE---------------------------
+## ---- weights.plot0, eval = TRUE, echo = FALSE--------------------------------
 w0 <- cbind(r$gstar.weights$w0$lb,
                   r$gstar.weights$w0$ub,
                   r$gstar.weights$w0$multiplier)

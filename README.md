@@ -15,21 +15,7 @@ vignette: >
   %\VignetteEngine{knitr::rmarkdown}
 ---
 
-```{r setup, include = FALSE}
-knitr::opts_chunk$set(
-  collapse = TRUE,
-  comment = "#>",
-  cache = TRUE,
-  fig.path = "vignettes/ivmte_files/figure-gfm/"
-)
-require(pander)
-require(data.table)
-require(AER)
-require(ivmte)
-require(ggplot2)
-require(gridExtra)
-require(splines2)
-```
+
 
 [![DOI](https://zenodo.org/badge/136092207.svg)](https://zenodo.org/badge/latestdoi/136092207)
 
@@ -51,13 +37,15 @@ The survey article by @mogstadtorgovitsky2018aroe provides additional theoretica
 ## Installation and Requirements
 
 **ivmte** can be installed from CRAN via
-```{r eval = FALSE}
+
+```r
 install.packages("ivmte")
 ```
 
 If you have the **devtools** package, you can install the latest version of the module directly from our GitHub repository via
 
-```{r eval = FALSE}
+
+```r
 devtools::install_github("jkcshea/ivmte")
 ```
 
@@ -90,13 +78,29 @@ A very clear installation guide for Gurobi can be found [here](https://cran.r-pr
 
 ### Data and Background
 
-We will use a subsample of `r nrow(AE)` women from the data used in @angristevans1998taer.
+We will use a subsample of 209133 women from the data used in @angristevans1998taer.
 The data is included with **ivmte** and has the following structure.
 
-```{r, drawData-ae}
+
+```r
 library(ivmte)
 knitr::kable(head(AE, n = 10))
 ```
+
+
+
+| worked| hours| morekids| samesex| yob| black| hisp| other|
+|------:|-----:|--------:|-------:|---:|-----:|----:|-----:|
+|      0|     0|        0|       0|  52|     0|    0|     0|
+|      0|     0|        0|       0|  45|     1|    0|     0|
+|      1|    35|        0|       1|  49|     0|    0|     0|
+|      0|     0|        0|       0|  50|     0|    0|     0|
+|      0|     0|        0|       0|  50|     0|    0|     0|
+|      0|     0|        1|       1|  51|     0|    0|     0|
+|      1|    40|        0|       0|  51|     0|    0|     0|
+|      1|    40|        0|       1|  46|     0|    0|     0|
+|      0|     0|        0|       1|  45|     0|    0|     0|
+|      1|    30|        1|       0|  44|     0|    0|     0|
 
 We will use these variables as follows:
 
@@ -111,8 +115,16 @@ We will use these variables as follows:
 A goal of @angristevans1998taer was to estimate the causal effect of `morekids` on either `worked` or `hours`.
 A linear regression of `worked` on `morekids` yields:
 
-```{r, ols, results='markdown'}
+
+```r
 lm(data = AE, worked ~ morekids)
+#> 
+#> Call:
+#> lm(formula = worked ~ morekids, data = AE)
+#> 
+#> Coefficients:
+#> (Intercept)     morekids  
+#>      0.5822      -0.1423
 ```
 
 The regression shows that women with three or more children are about 14--15% less likely to be working than women with exactly two children.
@@ -123,16 +135,32 @@ Or is it because women with a weaker attachment to the labor market choose to ha
 We expect that `samesex` is randomly assigned, so that among women with two or more children, those with weak labor market attachment are just as likely as those with strong labor market attachment to have to have two boys or two girls for their first two children.
 A regression shows that women whose first two children had the same sex are also more likely to go on to have a third child:
 
-```{r, fs, results='markdown'}
+
+```r
 lm(data = AE, morekids ~ samesex)
+#> 
+#> Call:
+#> lm(formula = morekids ~ samesex, data = AE)
+#> 
+#> Coefficients:
+#> (Intercept)      samesex  
+#>     0.30214      0.05887
 ```
 
 Thus, `samesex` constitutes a potential instrumental variable for `morekids`.
 We can run a simple instrumental variable regression using the `ivreg` command from the **AER** package.
 
-```{r, ivreg, results='markdown'}
+
+```r
 library("AER")
 ivreg(data = AE, worked ~ morekids | samesex )
+#> 
+#> Call:
+#> ivreg(formula = worked ~ morekids | samesex, data = AE)
+#> 
+#> Coefficients:
+#> (Intercept)     morekids  
+#>     0.56315     -0.08484
 ```
 
 The coefficient on `morekids` is smaller in magnitude than it was in the linear regression of `worked` on `morekids`.
@@ -154,7 +182,8 @@ For demonstrating some of the features of **ivmte**, it will also be useful to u
 The following code, which is contained in `./extdata/ivmteSimData.R`, generates some simulated data from a simple DGP.
 The simulated data is also included with the package as `./data/ivmteSimData.rda`.
 
-```{r, drawData-sim, results='markdown'}
+
+```r
 set.seed(1)
 n <- 5000
 u <- runif(n)
@@ -177,12 +206,28 @@ knitr::kable(head(ivmteSimData, n = 10))
 ```
 
 
+
+|  y|  d|  z|  x|
+|--:|--:|--:|--:|
+|  0|  0|  0|  3|
+|  0|  0|  1|  6|
+|  0|  0|  1|  3|
+|  0|  0|  3|  7|
+|  0|  1|  1|  7|
+|  1|  0|  1|  4|
+|  1|  0|  2|  4|
+|  1|  0|  1|  6|
+|  1|  0|  1|  6|
+|  1|  1|  3|  5|
+
+
 ### Syntax and Output Overview
 
 The main command of the **ivmte** package is also called `ivmte`.
 It has the following basic syntax:
 
-```{r, syntax, eval = FALSE}
+
+```r
 library("ivmte")
 results <- ivmte(data = AE,
                  target = "att",
@@ -203,7 +248,8 @@ The symbol `u` in the formula refers to the unobservable latent variable in the 
 
 This is what happens when the code above is run:
 
-```{r, syntaxrun}
+
+```r
 results <- ivmte(data = AE,
                  target = "att",
                  m0 = ~ u + yob,
@@ -211,6 +257,32 @@ results <- ivmte(data = AE,
                  ivlike = worked ~ morekids + samesex + morekids*samesex,
                  propensity = morekids ~ samesex + yob,
                  noisy = TRUE)
+#> 
+#> Solver: Gurobi ('gurobi')
+#> 
+#> Obtaining propensity scores...
+#> 
+#> Generating target moments...
+#>     Integrating terms for control group...
+#>     Integrating terms for treated group...
+#> 
+#> Generating IV-like moments...
+#>     Moment 1...
+#>     Moment 2...
+#>     Moment 3...
+#>     Moment 4...
+#>     Independent moments: 4 
+#> 
+#> Performing audit procedure...
+#>     Generating initial constraint grid...
+#> 
+#>     Audit count: 1
+#>     Minimum criterion: 0
+#>     Obtaining bounds...
+#>     Violations: 0
+#>     Audit finished.
+#> 
+#> Bounds on the target parameter: [-0.1028836, -0.07818869]
 ```
 
 When `noisy = TRUE`, the `ivmte` function indicates its progress in performing a sequence of intermediate operations.
@@ -223,7 +295,8 @@ The detailed output can be suppressed by passing `noisy = FALSE` as an additiona
 By default, detailed output is suppressed.
 Should the user wish to review the output, it is returned under the entry `$messages`, regardless of the value of the `noisy` parameter.
 
-```{r, syntaxrun.quiet}
+
+```r
 results <- ivmte(data = AE,
                  target = "att",
                  m0 = ~ u + yob,
@@ -232,7 +305,36 @@ results <- ivmte(data = AE,
                  propensity = morekids ~ samesex + yob,
                  noisy = FALSE)
 results
+#> 
+#> Bounds on the target parameter: [-0.1028836, -0.07818869]
+#> Audit terminated successfully after 1 round
 cat(results$messages, sep = "\n")
+#> 
+#> Solver: Gurobi ('gurobi')
+#> 
+#> Obtaining propensity scores...
+#> 
+#> Generating target moments...
+#>     Integrating terms for control group...
+#>     Integrating terms for treated group...
+#> 
+#> Generating IV-like moments...
+#>     Moment 1...
+#>     Moment 2...
+#>     Moment 3...
+#>     Moment 4...
+#>     Independent moments: 4 
+#> 
+#> Performing audit procedure...
+#>     Generating initial constraint grid...
+#> 
+#>     Audit count: 1
+#>     Minimum criterion: 0
+#>     Obtaining bounds...
+#>     Violations: 0
+#>     Audit finished.
+#> 
+#> Bounds on the target parameter: [-0.1028836, -0.07818869]
 ```
 
 ### Specifying the MTR Functions
@@ -244,7 +346,8 @@ However, the formulas involve an unobservable variable, `u`, which corresponds t
 This variable can be included in formulas in the same way as other observable variables in the data.
 For example,
 
-```{r, mtrbasics}
+
+```r
 args <- list(data = AE,
              ivlike =  worked ~ morekids + samesex + morekids*samesex,
              target = "att",
@@ -253,29 +356,41 @@ args <- list(data = AE,
              propensity = morekids ~ samesex + yob)
 r <- do.call(ivmte, args)
 r
+#> 
+#> Bounds on the target parameter: [-0.2950822, 0.1254494]
+#> Audit terminated successfully after 3 rounds
 ```
 
 A restriction that we make for computational purposes is that `u` can only appear in polynomial terms (perhaps interacted with other variables).
 Thus, the following raises an error
-```{r, non.polynomial.u.error, error = TRUE}
+
+```r
 args[["m0"]] <- ~ log(u) + yob
 r <- do.call(ivmte, args)
+#> Error: The following terms are not declared properly.
+#>   m0: log(u) 
+#> The unobserved variable 'u' must be declared as a monomial, e.g. u, I(u^3). The monomial can be interacted with other variables, e.g. x:u, x:I(u^3). Expressions where the unobservable term is not a monomial are either not permissible or will not be parsed correctly, e.g. exp(u), I((x * u)^2). Try to rewrite the expression so that 'u' is only included in monomials.
 ```
 
 Names other than `u` can be used for the selection equation unobservable, but one must remember to pass the option `uname` to indicate the new name.
 
-```{r, uname}
+
+```r
 args[["m0"]] <- ~ v + I(v^2) + yob + v*yob
 args[["m1"]] <- ~ v + I(v^2) + I(v^3) + yob + v*yob
 args[["uname"]] <- "v"
 r <- do.call(ivmte, args)
 r
+#> 
+#> Bounds on the target parameter: [-0.2950822, 0.1254494]
+#> Audit terminated successfully after 3 rounds
 ```
 
 There are some limitations regarding the use of factor variables.
 For example, the following formula for `m1` will trigger an error.
 
-```{r, factor.error, eval = FALSE}
+
+```r
 args[["uname"]] <- ~ "u"
 args[["m0"]] <- ~ u + yob
 args[["m1"]] <- ~ u + factor(yob)55 + factor(yob)60
@@ -283,15 +398,16 @@ args[["m1"]] <- ~ u + factor(yob)55 + factor(yob)60
 
 However, one can work around this in a natural way.
 
-```{r, factor.ok.prepare, echo = FALSE}
-args[["uname"]] <- ~ "u"
-args[["m0"]] <- ~ u + yob
-```
 
-```{r, factor.ok}
+
+
+```r
 args[["m1"]] <- ~ u + (yob == 55) + (yob == 60)
 r <- do.call(ivmte, args)
 r
+#> 
+#> Bounds on the target parameter: [-0.1028836, -0.07818869]
+#> Audit terminated successfully after 1 round
 ```
 
 #### Polynomial Splines
@@ -299,7 +415,8 @@ r
 In addition to global polynomials in `u`, `ivmte` also allows for polynomial splines in `u` using the keyword `uSplines`.
 For example,
 
-```{r, spline}
+
+```r
 args <- list(data = AE,
              ivlike =  worked ~ morekids + samesex + morekids*samesex,
              target = "att",
@@ -308,6 +425,9 @@ args <- list(data = AE,
              propensity = morekids ~ samesex + yob)
 r <- do.call(ivmte, args)
 r
+#> 
+#> Bounds on the target parameter: [-0.4545814, 0.3117817]
+#> Audit terminated successfully after 2 rounds
 ```
 The `degree` refers to the polynomial degree, so that `degree = 1` is a linear spline, and `degree = 2` is a quadratic spline.
 Constant splines, which have an important role in some of the theory developed by @mogstadsantostorgovitsky2018e, can be implemented with `degree = 0`.
@@ -327,7 +447,8 @@ By default, these are set to the values logically implied by the values for `m0.
 
 Here is an example with monotonicity restrictions:
 
-```{r, bounds}
+
+```r
 args <- list(data = AE,
              ivlike =  worked ~ morekids + samesex + morekids*samesex,
              target = "att",
@@ -339,6 +460,9 @@ args <- list(data = AE,
              propensity = morekids ~ samesex + yob)
 r <- do.call(ivmte, args)
 r
+#> 
+#> Bounds on the target parameter: [-0.09769381, 0.09247149]
+#> Audit terminated successfully after 1 round
 ```
 
 #### The Audit Procedure {#audit}
@@ -369,7 +493,8 @@ It also has a system that allows users to construct their own target parameters 
 The target parameter can be set to the average treatment effect (ATE), average treatment on the treated (ATT), or the average treatment on the untreated by setting `target` to `ate`, `att`, or `atu`, respectively.
 For example:
 
-```{r, conventional.tgt.params}
+
+```r
 args <- list(data = AE,
              ivlike =  worked ~ morekids + samesex + morekids*samesex,
              target = "att",
@@ -378,9 +503,15 @@ args <- list(data = AE,
              propensity = morekids ~ samesex + yob)
 r <- do.call(ivmte, args)
 r
+#> 
+#> Bounds on the target parameter: [-0.2950822, 0.1254494]
+#> Audit terminated successfully after 3 rounds
 args[["target"]] <- "ate"
 r <- do.call(ivmte, args)
 r
+#> 
+#> Bounds on the target parameter: [-0.375778, 0.1957841]
+#> Audit terminated successfully after 1 round
 ```
 
 #### LATEs and Generalized LATEs
@@ -389,7 +520,8 @@ The named lists should contain variable name and value pairs, where the variable
 Typically, one would choose instruments for these variables, although `ivmte` will let you include control variables as well.
 We demonstrate this using the simulated data.
 
-```{r, late}
+
+```r
 args <- list(data = ivmteSimData,
              ivlike =  y ~ d + z + d*z,
              target = "late",
@@ -400,17 +532,27 @@ args <- list(data = ivmteSimData,
              propensity = d ~ z + x)
 r <- do.call(ivmte, args)
 r
+#> 
+#> Bounds on the target parameter: [-0.6931532, -0.4397993]
+#> Audit terminated successfully after 2 rounds
 ```
 
 We can condition on covariates in the definition of the LATE by adding the named list `late.X` as follows.
 
-```{r, late.cond}
+
+```r
 args[["late.X"]] = c(x = 2)
 r <- do.call(ivmte, args)
 r
+#> 
+#> Bounds on the target parameter: [-0.8419396, -0.2913049]
+#> Audit terminated successfully after 2 rounds
 args[["late.X"]] = c(x = 8)
 r <- do.call(ivmte, args)
 r
+#> 
+#> Bounds on the target parameter: [-0.7721625, -0.3209851]
+#> Audit terminated successfully after 2 rounds
 ```
 
 **ivmte** also provides support for generalized LATEs, i.e. LATEs where the intervals of `u` that are being considered may or may not correspond to points in the support of the propensity score.
@@ -418,7 +560,8 @@ These objects are useful for a number of extrapolation purposes, see e.g. @mogst
 They are set with `target = "genlate"` and the additional scalars `genlate.lb` and `genlate.ub`.
 For example,
 
-```{r, genlate}
+
+```r
 args <- list(data = ivmteSimData,
              ivlike =  y ~ d + z + d*z,
              target = "genlate",
@@ -433,14 +576,21 @@ r <- do.call(ivmte, args)
 args[["genlate.ub"]] <- .42
 r <- do.call(ivmte, args)
 r
+#> 
+#> Bounds on the target parameter: [-0.7504255, -0.3182317]
+#> Audit terminated successfully after 2 rounds
 ```
 
 Generalized LATEs can also be made conditional-on-covariates by passing `late.X`:
 
-```{r, genlate.cond}
+
+```r
 args[["late.X"]] <- c(x = 2)
 r <- do.call(ivmte, args)
 r
+#> 
+#> Bounds on the target parameter: [-0.867551, -0.2750135]
+#> Audit terminated successfully after 2 rounds
 ```
 
 #### Custom Target Parameters
@@ -458,7 +608,8 @@ If the `target` option is passed along with the custom weights, an error is retu
 
 Here is an example of using custom weights to replicate the conditional LATE from above.
 
-```{r, custom.weights}
+
+```r
 pmodel <- r$propensity$model # returned from the previous run of ivmte
 xeval = 2 # x = xeval is the group that is conditioned on
 px <- mean(ivmteSimData$x == xeval) # probability that x = xeval
@@ -501,6 +652,9 @@ args <- list(data = ivmteSimData,
              propensity = d ~ z + x)
 r <- do.call(ivmte, args)
 r
+#> 
+#> Bounds on the target parameter: [-0.8419396, -0.2913049]
+#> Audit terminated successfully after 2 rounds
 ```
 
 The knot specification here is the same for both the treated and untreated weights.
@@ -535,7 +689,8 @@ However, one can include multiple LRs, as well as TSLS regressions using the `|`
 Each formula must have the same variable on the left-hand side, which is how the outcome variable gets inferred.
 For example,
 
-```{r, multi.ivlike}
+
+```r
 args <- list(data = ivmteSimData,
              ivlike =  c(y ~ (z == 1) + (z == 2) + (z == 3) + x,
                          y ~ d + x,
@@ -545,7 +700,13 @@ args <- list(data = ivmteSimData,
              m1 = ~ uSplines(degree = 1, knots = c(.25, .5, .75)) + x,
              propensity = d ~ z + x)
 r <- do.call(ivmte, args)
+#> Warning: The following IV-like specifications do not include the treatment
+#> variable: 1. This may result in fewer independent moment conditions than
+#> expected.
 r
+#> 
+#> Bounds on the target parameter: [-0.6427017, -0.3727193]
+#> Audit terminated successfully after 1 round
 ```
 
 There are 10 moments being fit in this specification.
@@ -567,18 +728,25 @@ The list should be declared using the `l` function, which is a generalization of
 The `l` function allows the user to list variables and expressions without having to enclose them by quotation marks.
 For example, the following includes the coefficients on the intercept and `x` from the first formula, the coefficient on `d` from the second formula, and all coefficients in the third formula.
 
-```{r, ivlike.components}
+
+```r
 args[["components"]] <- l(c(intercept, x), c(d), )
 r <- do.call(ivmte, args)
 r
+#> 
+#> Bounds on the target parameter: [-0.6865291, -0.2573525]
+#> Audit terminated successfully after 1 round
 ```
 Note that `intercept` is a reserved word that is used to specify the coefficient on the constant term.
 If the function `list` is used to pass the `components` option, an error will follow.
 
-```{r, l.example, error = TRUE}
+
+```r
 args[["components"]] <- list(c(intercept, x), c(d), )
+#> Error in eval(expr, envir, enclos): object 'intercept' not found
 args[["components"]] <- list(c("intercept", "x"), c("d"), "")
 r <- do.call(ivmte, args)
+#> Error in terms.formula(fi, ...): invalid model formula in ExtractVars
 ```
 
 #### Subsetting
@@ -587,7 +755,8 @@ This option expects a list of logical statements with the same length as `ivlike
 One can use the entire data by leaving the statement blank, or inserting a tautology such as `1 == 1`.
 For example, the following would run the first regression only on observations with `x` less than or equal to 9, the second regression on the entire sample, and the third (TSLS) formula only on those observations that have `z` equal to 1 or 3.
 
-```{r, ivlike.subsets}
+
+```r
 args <- list(data = ivmteSimData,
              ivlike =  c(y ~ z + x,
                          y ~ d + x,
@@ -598,7 +767,13 @@ args <- list(data = ivmteSimData,
              m1 = ~ uSplines(degree = 3, knots = c(.25, .5, .75)) + x,
              propensity = d ~ z + x)
 r <- do.call(ivmte, args)
+#> Warning: The following IV-like specifications do not include the treatment
+#> variable: 1. This may result in fewer independent moment conditions than
+#> expected.
 r
+#> 
+#> Bounds on the target parameter: [-0.6697228, -0.3331582]
+#> Audit terminated successfully after 2 rounds
 ```
 
 ### Specifying the Propensity Score
@@ -608,7 +783,8 @@ This must be specified with the `propensity` option, which expects a formula.
 The treatment variable is inferred to be the variable on the left-hand side of the `propensity`.
 The default is to estimate the formula as a logit model via the `glm` command, but this can be changed to `"linear"` or `"probit"` with the `link` option.
 
-```{r, pscore}
+
+```r
 results <- ivmte(data = AE,
                  target = "att",
                  m0 = ~ u + yob,
@@ -617,6 +793,9 @@ results <- ivmte(data = AE,
                  propensity = morekids ~ samesex + yob,
                  link = "probit")
 results
+#> 
+#> Bounds on the target parameter: [-0.100781, -0.0825274]
+#> Audit terminated successfully after 1 round
 ```
 
 ### Point Identified Models
@@ -628,7 +807,8 @@ The `ivmte` function will then estimate the target parameter using quadratic los
 If the model is known to be point identified beforehand, one can include the option ```point = TRUE``` to ensure the target parameter is estimated this way.
 One can additionally pass ```point.eyeweight = TRUE``` to estimate the target parameter using identity weighting.
 
-```{r, point.id}
+
+```r
 args <- list(data = ivmteSimData,
              ivlike =  y ~ d + factor(z),
              target = "ate",
@@ -638,6 +818,8 @@ args <- list(data = ivmteSimData,
              point = TRUE)
 r <- do.call(ivmte, args)
 r
+#> 
+#> Point estimate of the target parameter: -0.5389508
 ```
 
 If `ivmte` determines that the model is not point identified or the user passes ```point = FALSE```, then the bounds on the target parameter will be estimated.
@@ -646,11 +828,15 @@ The bounds will collapse to a point, but may differ from the case where ```point
 The reason is that `ivmte` uses absolute deviation loss instead of quadratic loss when  ```point = FALSE```.
 To demonstrate this, the example below sets the tuning parameter ```criterion.tol = 0``` so that the bounds indeed collapse to a point (see @mogstadsantostorgovitsky2018e for more detail).
 
-```{r, point.id.absolute}
+
+```r
 args$point <- FALSE
 args$criterion.tol <- 0
 r <- do.call(ivmte, args)
 r
+#> 
+#> Bounds on the target parameter: [-0.5349027, -0.5349027]
+#> Audit terminated successfully after 1 round
 ```
 
 One should use ```point = TRUE``` if the model is point identified, since it computes confidence intervals and specification tests (discussed ahead) in a well-understood way.
@@ -661,7 +847,8 @@ One should use ```point = TRUE``` if the model is point identified, since it com
 The ```ivmte``` command does provide functionality for constructing confidence regions, although this is turned off by default, since it can be computationally expensive.
 To turn it on, set ```bootstraps``` to be a positive integer.
 The confidence intervals are stored under `$bounds.ci`.
-```{r, partial.ci}
+
+```r
 r <- ivmte(data = AE,
            target = "att",
            m0 = ~ u + yob,
@@ -670,6 +857,20 @@ r <- ivmte(data = AE,
            propensity = morekids ~ samesex + yob,
            bootstraps = 50)
 summary(r)
+#> 
+#> Bounds on the target parameter: [-0.1028836, -0.07818869]
+#> Audit terminated successfully after 1 round 
+#> MTR coefficients: 6 
+#> Independent/total moments: 4/4 
+#> Minimum criterion: 0 
+#> Solver: Gurobi ('gurobi')
+#> 
+#> Bootstrapped confidence intervals (backward):
+#>     90%: [-0.1767266, 0.01163401]
+#>     95%: [-0.1877661, 0.0125208]
+#>     99%: [-0.1879194, 0.05562988]
+#> p-value: 0.16
+#> Number of bootstraps: 50
 ```
 
 Other options relevent to confidence region construction are `bootstraps.m`, which indicates the number of observations to draw from the sample on each bootstrap replication, and `bootstraps.replace` to indicate whether these observations should be drawn with or without replacement.
@@ -678,52 +879,44 @@ This corresponds to the usual nonparametric bootstrap.
 Choosing `bootstraps.m` to be smaller than the sample size and setting `bootstraps.replace` to be `TRUE` or `FALSE` corresponds to the "m out of n" bootstrap or subsampling, respectively.
 Regardless of these settings, two types of confidence regions are constructed following the terminology of @andrewshan2009ej; see @sheatorgovitsky2021wp for more detail, references, and important theoretical caveats to the procedures.
 While the `summary` output displays only the backward confidence region, both forward and backward confidence regions are stored under `$bounds.ci`.
-```{r, partial.ci.show}
+
+```r
 r$bounds.ci
+#> $backward
+#>      lb.backward ub.backward
+#> 0.9   -0.1767266  0.01163401
+#> 0.95  -0.1877661  0.01252080
+#> 0.99  -0.1879194  0.05562988
+#> 
+#> $forward
+#>      lb.forward   ub.forward
+#> 0.9  -0.2013875 -0.010580678
+#> 0.95 -0.2021541 -0.007122401
+#> 0.99 -0.2473285 -0.002190831
 ```
 
 The bootstrapped bounds are returned and stored in `r$bounds.bootstraps`, and can be used to plot the distribution of bound estimates.
 
-```{r, bootstrap.data, eval = TRUE}
+
+```r
 head(r$bounds.bootstrap)
+#>          lower       upper
+#> 1 -0.176726565 -0.13140944
+#> 2 -0.079414585 -0.04838939
+#> 3 -0.004379649  0.01163401
+#> 4 -0.126917750 -0.09350509
+#> 5 -0.110911453 -0.09289715
+#> 6 -0.101183496 -0.08202556
 ```
 The dashed lines in the figure below indicate the bounds obtained from the original sample.
 
-```{r, bootstrap.plot, eval = TRUE, echo = FALSE}
-bootstraps <- data.frame(type = rep(c('lb', 'ub'), each = 50),
-                         value = c(r$bounds.bootstraps[, 1],
-                                   r$bounds.bootstraps[, 2]))
-ggplot(data = bootstraps,
-       aes(x = value, color = type, fill = type)) +
-    geom_histogram(position = "dodge", alpha = 0.5, binwidth = 0.05) +
-    geom_vline(xintercept = r$bounds[1],
-               linetype = "dashed", size = 1.5, color = "orange") +
-    geom_vline(xintercept = r$bounds[2],
-               linetype = "dashed", size = 1.5, color = "lightskyblue") +
-    ## Labeling options
-    labs(x = "Bound",
-         y = "Frequency") +
-    ## Presentation options
-    theme(text = element_text(size = 10),
-          axis.line = element_line(color = "black"),
-          axis.text = element_text(size=10,
-                                   angle = 0),
-          panel.background = element_blank(),
-          legend.key = element_blank(),
-          legend.position = "bottom",
-          legend.box = "vertical",
-          legend.title = element_blank(),
-          legend.text = element_text(size = 10)) +
-    scale_color_manual("", values = c("orange", "lightskyblue"),
-                       labels = c(" Lower bound   ", " Upper bound ")) +
-    scale_fill_manual("", values = c("orange", "lightskyblue"),
-                      labels = c(" Lower bound   ", " Upper bound "))
-```
+![](vignettes/ivmte_files/figure-gfm/bootstrap.plot-1.png)<!-- -->
 
 Confidence regions can also be constructed when ```point == TRUE``` in a similar way.
 The bootstrapped point estimates are returned and stored in `r$point.estimate.bootstraps`.
 
-```{r, point.id.bootstrap}
+
+```r
 args <- list(data = AE,
              target = "att",
              m0 = ~ u,
@@ -734,6 +927,17 @@ args <- list(data = AE,
              bootstraps = 50)
 r <- do.call(ivmte, args)
 summary(r)
+#> 
+#> Point estimate of the target parameter: -0.09160436
+#> MTR coefficients: 4 
+#> Independent/total moments: 4/4 
+#> 
+#> Bootstrapped confidence intervals (nonparametric):
+#>     90%: [-0.1521216, -0.02213206]
+#>     95%: [-0.1595378, -0.01554401]
+#>     99%: [-0.2023271, -0.002062735]
+#> p-value: 0.02
+#> Number of bootstraps: 50
 ```
 The p-value reported in both cases is for the null hypothesis that the target parameter is equal to 0, which we infer here by finding the largest confidence region that does not contain 0.
 By default, `ivmte` returns 99%, 95%, and 90% confidence intervals.
@@ -749,7 +953,8 @@ In the partially identified case, we implement the misspecification test discuss
 The specification tests are automatically conducted when `bootstraps` is positive and the minimum criterion value in the sample problem is larger than 0.
 However, it can be turned off by setting `specification.test = FALSE`.
 
-```{r, misspecification.test}
+
+```r
 args <- list(data = ivmteSimData,
              ivlike =  y ~ d + factor(z),
              target = "ate",
@@ -760,12 +965,39 @@ args <- list(data = ivmteSimData,
              propensity = d ~ factor(z),
              bootstraps = 50)
 r <- do.call(ivmte, args)
+#> Warning: MTR is point identified via GMM. Shape constraints are ignored.
 summary(r)
+#> 
+#> Point estimate of the target parameter: -0.5389508
+#> MTR coefficients: 4 
+#> Independent/total moments: 5/5 
+#> 
+#> Bootstrapped confidence intervals (nonparametric):
+#>     90%: [-0.6085175, -0.4937168]
+#>     95%: [-0.6122408, -0.4929158]
+#>     99%: [-0.6282604, -0.4765259]
+#> p-value: 0
+#> Bootstrapped J-test p-value: 0.32
+#> Number of bootstraps: 50
 
 args[["ivlike"]] <- y ~ d + factor(z) + d*factor(z) # many more moments
 args[["point"]] <- TRUE
 r <- do.call(ivmte, args)
+#> Warning: If argument 'point' is set to TRUE, then shape restrictions on m0 and
+#> m1 are ignored, and the audit procedure is not implemented.
 summary(r)
+#> 
+#> Point estimate of the target parameter: -0.5559325
+#> MTR coefficients: 4 
+#> Independent/total moments: 8/8 
+#> 
+#> Bootstrapped confidence intervals (nonparametric):
+#>     90%: [-0.6009581, -0.5048528]
+#>     95%: [-0.605144, -0.5039834]
+#>     99%: [-0.6100535, -0.501858]
+#> p-value: 0
+#> Bootstrapped J-test p-value: 0.52
+#> Number of bootstraps: 50
 ```
 
 ### Plotting MTRs and MTEs
@@ -773,7 +1005,8 @@ summary(r)
 After the estimation procedure, the MTR and MTE functions can be plotted for for further analysis.
 Below is a demonstration of how to generate such plots when the MTR functions contain splines.
 
-```{r, draw.specification, eval = TRUE}
+
+```r
 args <- list(data = AE,
              ivlike =  worked ~ morekids + samesex + morekids*samesex,
              target = "att",
@@ -785,21 +1018,39 @@ args <- list(data = AE,
              propensity = morekids ~ samesex)
 r <- do.call(ivmte, args)
 r
+#> 
+#> Bounds on the target parameter: [-0.08484221, 0.08736006]
+#> Audit terminated successfully after 2 rounds
 ```
 
 The specification of each uniquely defined spline is stored in the list `r$splines.dict`.
 For example, if `m0` contained only the terms `uSplines(degree = 0, knots = 0.5)` and `x:uSplines(degree = 0, knots = 0.5)`, then the list `r$splines.dict$m0` will contain a single entry, since the two terms above contain the same spline.
 
-```{r, draw.m0.splines, eval = TRUE}
+
+```r
 specs0 <- r$splines.dict$m0[[1]]
 specs0
+#> $degree
+#> [1] 2
+#> 
+#> $intercept
+#> [1] TRUE
+#> 
+#> $knots
+#> [1] 0.3333333 0.6666667
+#> 
+#> $gstar.index
+#> [1] 1
 ```
 
 Since the splines must be constructed as part of the estimation procedure, the variable names for the basis splines are automatically generated according to a naming convention to ensure that each coefficient can be mapped to the correct basis.
 For example, consider the coefficient estimates for `m0` corresponding to the lower bound on the treatment effect, which are stored in `r$gstar.coef$min.g0`
 
-```{r, draw.m0.coef, eval = TRUE}
+
+```r
 r$gstar.coef$min.g0
+#> [m0]u0S1.1:1 [m0]u0S1.2:1 [m0]u0S1.3:1 [m0]u0S1.4:1 [m0]u0S1.5:1 
+#>    0.5134883    0.5116711    0.5855708    0.5917033    0.5913861
 ```
 
 * The first three characters of each variable name, `u0S`, indicate that the variables corresponds to a spline in `m0`.
@@ -820,7 +1071,8 @@ While **ivmte** assumes the boundary knots are always 0 and 1, the user will hav
 Multiplying the design matrix by `r$gstar.coef$min.g0` generates the fitted values for `m0` associated with the lower bound of the treatment effect.
 Likewise, multiplying the design matrix by `r$gstar.coef$max.g0` generates the fitted values for `m0` associated with the upper bound.
 
-```{r, draw.design.m0, eval = TRUE}
+
+```r
 uSeq <- seq(0, 1, by = 0.01)
 dmat0 <- bSpline(x = uSeq,
                       degree = specs0$degree,
@@ -832,16 +1084,7 @@ m0.max <- dmat0 %*% r$gstar.coef$max.g0
 ```
 
 
-```{r, draw.design.m1, eval = TRUE, echo = FALSE}
-specs1 <- r$splines.dict$m1[[1]]
-dmat1 <- bSpline(x = uSeq,
-                 degree = specs1$degree,
-                 intercept = specs1$intercept,
-                 knots = specs1$knots,
-                 Boundary.knots = c(0, 1))
-m1.min <- dmat1 %*% r$gstar.coef$min.g1
-m1.max <- dmat1 %*% r$gstar.coef$max.g1
-```
+
 
 The analogous steps can be performed to obtain the fitted values for `m1`.
 Taking the difference of the fitted values for `m1` and `m0` yields an MTE curve.
@@ -851,64 +1094,13 @@ That is, the curves either maximize or minimize the treatment effect parameter, 
 Below are plots of the MTR and MTE as functions of unobserved heterogeneity `u`.
 The figures on the left correspond to the lower bound of the treatment effect, and the figures on the right correspond to the upper bound.
 
-```{r, eval = TRUE}
+
+```r
 mte.min <- m1.min - m0.min
 mte.max <- m1.max - m0.max
 ```
 
-```{r, draw.plots, eval = TRUE, echo = FALSE, fig.width = 8, fig.height = 10}
-lim0 <- c(0, 0.8)
-lim1 <- c(0.0, 0.8)
-limte <- c(-0.2, 0.5)
-dt1 <- data.frame(x = uSeq, y = m0.min)
-dt2 <- data.frame(x = uSeq, y = m0.max)
-dt3 <- data.frame(x = uSeq, y = m1.min)
-dt4 <- data.frame(x = uSeq, y = m1.max)
-dt5 <- data.frame(x = uSeq, y = mte.min)
-dt6 <- data.frame(x = uSeq, y = mte.max)
-for (i in 1:6) {
-    if (i %in% c(1, 2)) {
-        ylim <- lim0
-        if (i == 1) ylab <- expression(paste("Min. ", m[0]))
-        if (i == 2) ylab <- expression(paste("Max. ", m[0]))
-    }
-    if (i %in% c(3, 4)) {
-        ylim <- lim1
-        if (i == 3) ylab <- expression(paste("Min. ", m[1]))
-        if (i == 4) ylab <- expression(paste("Max. ", m[1]))
-    }
-    if (i %in% c(5, 6)) {
-        ylim <- limte
-        if (i == 5) ylab <- expression(paste("Min. ", MTE(u)))
-        if (i == 6) ylab <- expression(paste("Max. ", MTE(u)))
-    }
-    assign("dt", get(paste0("dt", i)))
-    figure <- ggplot() +
-        geom_line(data = dt,
-                  aes(x = x,
-                      y = y),
-                  size = 1.0) +
-        ## Labeling options
-        labs(x = "u",
-             y = ylab) +
-        scale_x_continuous(limits = c(0, 1),
-                           breaks = seq(0, 1, 0.25)) +
-        scale_y_continuous(limits = ylim) +
-        ## Presentation options
-        theme(text = element_text(size = 10),
-              axis.line = element_line(color = "black"),
-              axis.text = element_text(size=10,
-                                       angle = 0),
-              panel.background = element_blank(),
-              legend.key = element_blank(),
-              legend.position = "bottom",
-              legend.box = "horizontal",
-              legend.title = element_blank(),
-              legend.text = element_text(size = 10))
-    assign(paste0("figure", i), figure)
-}
-grid.arrange(figure1, figure2, figure3, figure4, figure5, figure6, ncol=2)
-```
+![](vignettes/ivmte_files/figure-gfm/draw.plots-1.png)<!-- -->
 
 In the case of the MTE associated with the lower bound, the monotonicity constraints are all binding, resulting in a constant MTE.
 If the plots do not satisfy all the shape constraints, this implies the audit grid is not large enough, and that `audit.nu` should be increased.
@@ -933,7 +1125,8 @@ The weights for the first estimand are contained in `r$s.set$s1$w0` and `r$s.set
 
 Below, the treated weights for the target parameter and IV-like estimands are organized into matrices with columns for the lower bound, upper bound, and multiplier.
 
-```{r, weights.matrix, eval = TRUE, echo = TRUE}
+
+```r
 ## Target weights
 w1 <- cbind(r$gstar.weights$w1$lb,
                   r$gstar.weights$w1$ub,
@@ -962,9 +1155,11 @@ colnames(w1) <-
 Since the propensity score model is simply `morekids ~ samesex`, and `samesex` is a binary variable, there are only two values of the propensity score.
 These two values partition the unit interval into three regions, and the average weights will vary across these three regions.
 These propensity scores can be recovered from the column `ub` in any of the matrices constructed above.
-```{r, weights.prop, eval = TRUE, echo = TRUE}
+
+```r
 pscore <- sort(unique(w1[, "ub"]))
 pscore
+#> [1] 0.3021445 0.3610127
 ```
 More generally, the propensity scores determine the upper bound for the region where the weights are non-zero for the treated weights associated with the IV-like estimands.
 In the case of the untreated weights associated with the IV-like estimands, the propensity score determines the lower bound.
@@ -973,7 +1168,8 @@ In the case of the untreated weights associated with the IV-like estimands, the 
 The code below demonstrates how to calculate the average weights for each interval, and stores the results in a `data.frame` that will be used to generate the plot.
 The analogous calculations can be performed to estimate the average weights for the untreated agents.
 
-```{r, weights.data, eval = TRUE, echo = TRUE}
+
+```r
 avg1 <- NULL ## The data.frame that will contain the average weights
 i <- 0 ## An index for the type of weight
 for (j in c('w1', 'sw1', 'sw2', 'sw3', 'sw4')) {
@@ -1002,9 +1198,24 @@ The weights for agents with `samesex = FALSE` are thus 0 is in this region.
 Since the object of interest is the weights of the treated agents, the average weight in this third region is necessarily 0.
 
 The `data.frame` created above that will be used to generate the plot for the average treated weights takes on the following form.
-```{r, evaluate = TRUE, echo = FALSE}
-knitr::kable(avg1)
-```
+
+|  s|  d|        lb|        ub|  avgWeight|
+|--:|--:|---------:|---------:|----------:|
+|  0|  1| 0.0000000| 0.3021445|  3.0124888|
+|  0|  1| 0.3021445| 0.3610127|  1.5253234|
+|  0|  1| 0.3610127| 1.0000000|  0.0000000|
+|  1|  1| 0.0000000| 0.3021445|  0.0000000|
+|  1|  1| 0.3021445| 0.3610127|  0.0000000|
+|  1|  1| 0.3610127| 1.0000000|  0.0000000|
+|  2|  1| 0.0000000| 0.3021445|  3.3096749|
+|  2|  1| 0.3021445| 0.3610127|  0.0000000|
+|  2|  1| 0.3610127| 1.0000000|  0.0000000|
+|  3|  1| 0.0000000| 0.3021445|  0.0000000|
+|  3|  1| 0.3021445| 0.3610127|  0.0000000|
+|  3|  1| 0.3610127| 1.0000000|  0.0000000|
+|  4|  1| 0.0000000| 0.3021445| -0.5396896|
+|  4|  1| 0.3021445| 0.3610127|  2.7699854|
+|  4|  1| 0.3610127| 1.0000000|  0.0000000|
 
 * The first column indicates the type of weight.
 A value of `0` indicates the weight corresponds to the target parameter. Integers greater than 0 indicate the weight corresponds to the IV-like estimand with the same index.
@@ -1015,139 +1226,11 @@ A value of `0` indicates the weight corresponds to the target parameter. Integer
 Adjusting for overlaps, the table above generates the plot below on the right.
 The analogous table containing the average untreated weights generates the plot on the left.
 For clarity, the weights for associated with the intercept have been omitted from both plots.
-```{r, weights.plot1, eval = TRUE, echo = FALSE}
-## Account for overlap
-avg1[avg1$lb > 0 & avg1$lb < pscore[2] & avg1$s == 2, ]$avgWeight <- -0.07
-avg1[avg1$lb > pscore[1] & avg1$s == 2, ]$avgWeight <- -0.07
-avg1[avg1$lb > pscore[1] & avg1$s == 0, ]$avgWeight <- +0.07
-avg1[avg1$lb > pscore[1] & avg1$s == 4, ]$avgWeight <- +0.14
-## Draw plot
-wFigure1 <- ggplot() +
-    geom_segment(data = avg1[avg1$s == 0, ],
-                 mapping = aes(x=lb, xend=ub, y = avgWeight, yend = avgWeight,
-                               color= "Target"), size = 2, linetype = "dashed") +
-    geom_segment(data = avg1[avg1$s == 2, ],
-                 mapping = aes(x=lb, xend=ub, y = avgWeight, yend = avgWeight,
-                               color= "More kids", ), size = 2) +
-    geom_segment(data = avg1[avg1$s == 3, ],
-                 mapping = aes(x=lb, xend=ub, y = avgWeight, yend = avgWeight,
-                               color= "Same sex"), size = 2) +
-    geom_segment(data = avg1[avg1$s == 4, ],
-                 mapping = aes(x=lb, xend=ub, y = avgWeight, yend = avgWeight,
-                               color= "More kids x Same sex"), size = 2) +
-    scale_x_continuous(breaks=seq(0, 1, 0.2)) +
-    theme(text = element_text(size = 10),
-          axis.line = element_line(color = "black"),
-          axis.text = element_text(size=10,
-                                   angle = 0),
-          panel.background = element_blank(),
-          legend.key = element_blank(),
-          legend.position = "bottom",
-          legend.box = "horizontal",
-          legend.title = element_blank(),
-          legend.text = element_text(size = 10)) +
-    labs(x="u", y="Average weights, d = 1") +
-    scale_color_manual("",
-                       breaks = c("Target", "More kids", "Same sex", "More kids x Same sex"),
-                       values = c("lightskyblue", "orange", "olivedrab", "gray60"))
-```
 
-```{r, weights.plot0, eval = TRUE, echo = FALSE}
-w0 <- cbind(r$gstar.weights$w0$lb,
-                  r$gstar.weights$w0$ub,
-                  r$gstar.weights$w0$multiplier)
-sw1 <- cbind(r$s.set$s1$w0$lb,
-             r$s.set$s1$w0$ub,
-             r$s.set$s1$w0$multiplier)
-sw2 <- cbind(r$s.set$s2$w0$lb,
-             r$s.set$s2$w0$ub,
-             r$s.set$s2$w0$multiplier)
-sw3 <- cbind(r$s.set$s3$w0$lb,
-             r$s.set$s3$w0$ub,
-             r$s.set$s3$w0$multiplier)
-sw4 <- cbind(r$s.set$s4$w0$lb,
-             r$s.set$s4$w0$ub,
-             r$s.set$s4$w0$multiplier)
-colnames(w0) <-
-    colnames(sw1) <-
-    colnames(sw2) <-
-    colnames(sw3) <-
-    colnames(sw4) <- c("lb", "ub", "mp")
-## Construct data frame
-avg0 <- NULL
-i <- 0
-for (j in c('w0', 'sw1', 'sw2', 'sw3', 'sw4')) {
-    dt <- data.frame(get(j))
-    if (j == 'w0') {
-        avg <- rbind(c(s = i, d = 1, lb = 0, ub = pscore[1],
-                       avgWeight = mean(dt$mp)),
-                     c(s = i, d = 1, lb = pscore[1], ub = pscore[2],
-                       avgWeight = mean(as.integer(dt$ub ==
-                                                   pscore[2]) * dt$mp)),
-                     c(s = i, d = 1, lb = pscore[2], ub = 1, avgWeight = 0))
-    } else {
-        avg <- rbind(c(s = i, d = 0, lb = 0, ub = pscore[1],
-                       avgWeight = 0),
-                     c(s = i, d = 0, lb = pscore[1], ub = pscore[2],
-                       avgWeight = mean(as.integer(dt$ub ==
-                                                   pscore[1]) * dt$mp)),
-                     c(s = i, d = 0, lb = pscore[2], ub = 1,
-                       avgWeight = mean(dt$mp)))
-    }
-    avg0 <- rbind(avg0, avg)
-    i <- i + 1
-}
-avg0 <- data.frame(avg0)
-## Deal with overlaps
-avg0[avg0$lb > 0 & avg0$lb < pscore[2] & avg0$s == 2, ]$avgWeight <- -0.055
-avg0[avg0$lb > 0 & avg0$lb < pscore[2] & avg0$s == 4, ]$avgWeight <- +0.055
-avg0[avg0$lb == 0 & avg0$s == 2, ]$avgWeight <- -0.055
-avg0[avg0$lb == 0 & avg0$s == 4, ]$avgWeight <- +0.055
-## Draw plot
-wFigure2 <- ggplot() +
-    geom_segment(data = avg0[avg0$s == 0, ],
-                 mapping = aes(x=lb, xend=ub, y = avgWeight, yend = avgWeight,
-                               color= "Target"), size = 2, linetype = "dashed") +
-    geom_segment(data = avg0[avg0$s == 2, ],
-                 mapping = aes(x=lb, xend=ub, y = avgWeight, yend = avgWeight,
-                               color= "More kids", ), size = 2) +
-    geom_segment(data = avg0[avg0$s == 3, ],
-                 mapping = aes(x=lb, xend=ub, y = avgWeight, yend = avgWeight,
-                               color= "Same sex"), size = 2) +
-    geom_segment(data = avg0[avg0$s == 4, ],
-                 mapping = aes(x=lb, xend=ub, y = avgWeight, yend = avgWeight,
-                               color= "More kids x Same sex"), size = 2) +
-    scale_x_continuous(breaks=seq(0, 1, 0.2)) +
-    theme(text = element_text(size = 10),
-          axis.line = element_line(color = "black"),
-          axis.text = element_text(size=10,
-                                   angle = 0),
-          panel.background = element_blank(),
-          legend.key = element_blank(),
-          legend.position = "bottom",
-          legend.box = "horizontal",
-          legend.title = element_blank(),
-          legend.text = element_text(size = 10)) +
-    labs(x="u", y="Average weights, d = 0") +
-    scale_color_manual("",
-                       breaks = c("Target", "More kids", "Same sex", "More kids x Same sex"),
-                       values = c("lightskyblue", "orange", "olivedrab", "gray60"))
-```
 
-```{r, weights.plot.combine, eval = TRUE, echo = FALSE, fig.width = 8, fig.height = 5}
-## Combine plots
-g_legend <- function(a.gplot) {
-  tmp <- ggplot_gtable(ggplot_build(a.gplot))
-  leg <- which(sapply(tmp$grobs, function(x) x$name) == "guide-box")
-  legend <- tmp$grobs[[leg]]
-  return(legend)
-}
-jointLegend <- g_legend(wFigure2)
-grid.arrange(arrangeGrob(wFigure2 + theme(legend.position = "none"),
-                         wFigure1 + theme(legend.position = "none"),
-                         nrow = 1),
-             jointLegend, heights = c(10, 1))
-```
+
+
+![](vignettes/ivmte_files/figure-gfm/weights.plot.combine-1.png)<!-- -->
 
 ## Help, Feature Requests and Bug Reports
 

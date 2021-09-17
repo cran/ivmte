@@ -4,12 +4,12 @@
 \alias{lpSetupSolver}
 \title{Configure LP environment to be compatible with solvers}
 \usage{
-lpSetupSolver(env, lpsolver)
+lpSetupSolver(env, solver)
 }
 \arguments{
 \item{env}{The LP environment}
 
-\item{lpsolver}{Character, the LP solver.}
+\item{solver}{Character, the LP solver.}
 }
 \value{
 Nothing, as this modifies an environment variable to save
@@ -18,5 +18,5 @@ Nothing, as this modifies an environment variable to save
 \description{
 This alters the LP environment so the model will be compatible with
 specific solvers. The LP model must be passed as an environment
-variable, under the entry \code{$lpobj}. See \code{\link{lpSetup}}.
+variable, under the entry \code{$model}. See \code{\link{lpSetup}}.
 }

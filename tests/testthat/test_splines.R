@@ -36,8 +36,7 @@ result <- ivmte(ivlike = ivlike,
                 m1.ub = 55,
                 m0.lb = 0,
                 mte.inc = TRUE,
-                lpsolver = "lpSolveAPI",
-                seed = 10L)
+                solver = "lpSolveAPI")
 
 ##-------------------------
 ## Perform tests
@@ -195,6 +194,15 @@ g5 <- genGammaSplinesTT(distr = dts,
                          j = 3,
                          exz = exz,
                          pi = pi)
+
+## Update names
+for (i in 1:5) {
+    tmp.g <- get(paste0('g', i))
+    names(tmp.g$g0) <- paste0('[m0]', names(tmp.g$g0))
+    names(tmp.g$g1) <- paste0('[m1]', names(tmp.g$g1))
+    assign(paste0('g', i), tmp.g)
+}
+
 
 ##-------------------------
 ## Test equivalence of Gamma moments
@@ -358,7 +366,7 @@ modelF$lb <- c(replicate(ncol(Aextra), 0),
 ## Find bounds with threshold
 minAtt <- runLpSolveAPI(modelF, 'min', lpsolver.options)
 maxAtt <- runLpSolveAPI(modelF, 'max', lpsolver.options)
-bound <- c(minAtt$objval, maxAtt$objval)
+bound <- c(lower = minAtt$objval, upper = maxAtt$objval)
 
 ##-------------------------
 ## Test bounds
@@ -410,8 +418,7 @@ resultAlt <- ivmte(ivlike = ivlike,
                    m0.lb = 0,
                    mte.inc = TRUE,
                    mte.ub = 10,
-                   lpsolver = "lpSolveAPI",
-                   seed = 10L)
+                   solver = "lpSolveAPI")
 
 ##------------------------
 ## Reconstruct target gamma moments

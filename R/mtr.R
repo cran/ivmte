@@ -191,7 +191,9 @@ polyparse <- function(formula, data, uname = "u", env = parent.frame(),
         polymat <- matrix(polymat, ncol = 1)
         rownames(polymat) <- rownames(data)
     }
-    ## Construct a dictionary of non-u terms
+    ## Construct a dictionary of non-u terms, where the entry name is
+    ## each term, and the entries are the list of non-u terms that are
+    ## interacted with the u term.
     xterms <- lapply(seq(length(exporder)), function(x) {
         if (exporder[x] == 0) {
             NULL
@@ -308,7 +310,8 @@ genGamma <- function(monomials, lb, ub, multiplier = 1,
     polymat <- monomials$polymat
     if (!is.null(subset)) {
         polymat <- as.matrix(polymat[subset, ])
-        late.rows <- late.rows[as.integer(subset)]
+        late.rows <-
+            late.rows[which(rownames(polymat) %in% as.integer(subset))]
     }
     nmono <- length(exporder)
     ## Determine bounds of integrals (i.e. include weights)
@@ -850,6 +853,13 @@ genGammaSplines <- function(splinesobj, data, lb, ub, multiplier = 1,
         splinesNames <- gsub(":\\(Intercept\\)", ":1", splinesNames)
         splinesNames <- gsub("\\(Intercept\\):", "1:", splinesNames)
         splinesGamma <- splinesGamma[late.rows, ]
+        if (is.null(dim(splinesGamma))) {
+            if (length(late.rows) > 1) {
+                splinesGamma <- matrix(splinesGamma, ncol = 1)
+            } else {
+                splinesGamma <- matrix(splinesGamma, nrow = 1)
+            }
+        }
         if (means == TRUE) {
             splinesGamma <- colMeans(splinesGamma)
             names(splinesGamma) <- splinesNames

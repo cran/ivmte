@@ -4,9 +4,19 @@
 \alias{gmmEstimate}
 \title{GMM estimate of TE under point identification}
 \usage{
-gmmEstimate(sset, gstar0, gstar1, center = NULL, subsetList = NULL,
-  n = NULL, redundant = NULL, identity = FALSE, nMoments, splines,
-  noisy = TRUE)
+gmmEstimate(
+  sset,
+  gstar0,
+  gstar1,
+  center = NULL,
+  subsetList = NULL,
+  n = NULL,
+  redundant = NULL,
+  identity = FALSE,
+  nMoments,
+  splines,
+  noisy = TRUE
+)
 }
 \arguments{
 \item{sset}{a list of lists constructed from the function
@@ -119,8 +129,7 @@ targetGamma <- genTarget(treat = "d",
                          splinesobj = splinesList,
                          pmodobj = propensityObj,
                          pm0 = polynomials0,
-                         pm1 = polynomials1,
-                         point = TRUE)
+                         pm1 = polynomials1)
 
 ## Construct S-set. which contains the coefficients and weights
 ## corresponding to various IV-like estimands

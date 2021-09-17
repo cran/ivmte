@@ -4,19 +4,62 @@
 \alias{audit}
 \title{Audit procedure}
 \usage{
-audit(data, uname, m0, m1, pm0, pm1, splinesobj, vars_mtr, terms_mtr0,
-  terms_mtr1, vars_data, initgrid.nu = 20, initgrid.nx = 20,
-  audit.nx = 2500, audit.nu = 25, audit.add = 100, audit.max = 25,
-  audit.tol, audit.grid = NULL, m1.ub, m0.ub, m1.lb, m0.lb, mte.ub,
-  mte.lb, m1.ub.default = FALSE, m0.ub.default = FALSE,
-  mte.ub.default = FALSE, m1.lb.default = FALSE,
-  m0.lb.default = FALSE, mte.lb.default = FALSE, m0.dec = FALSE,
-  m0.inc = FALSE, m1.dec = FALSE, m1.inc = FALSE, mte.dec = FALSE,
-  mte.inc = FALSE, sset, gstar0, gstar1, orig.sset = NULL,
-  orig.criterion = NULL, criterion.tol = 0, lpsolver, lpsolver.options,
-  lpsolver.presolve, lpsolver.options.criterion, lpsolver.options.bounds,
-  smallreturnlist = FALSE, noisy = TRUE, seed = 12345,
-  debug = FALSE)
+audit(
+  data,
+  uname,
+  m0,
+  m1,
+  pm0,
+  pm1,
+  splinesobj,
+  vars_mtr,
+  terms_mtr0,
+  terms_mtr1,
+  vars_data,
+  initgrid.nu = 20,
+  initgrid.nx = 20,
+  audit.nx = 2500,
+  audit.nu = 25,
+  audit.add = 100,
+  audit.max = 25,
+  audit.tol,
+  audit.grid = NULL,
+  m1.ub,
+  m0.ub,
+  m1.lb,
+  m0.lb,
+  mte.ub,
+  mte.lb,
+  m1.ub.default = FALSE,
+  m0.ub.default = FALSE,
+  mte.ub.default = FALSE,
+  m1.lb.default = FALSE,
+  m0.lb.default = FALSE,
+  mte.lb.default = FALSE,
+  m0.dec = FALSE,
+  m0.inc = FALSE,
+  m1.dec = FALSE,
+  m1.inc = FALSE,
+  mte.dec = FALSE,
+  mte.inc = FALSE,
+  equal.coef0,
+  equal.coef1,
+  sset,
+  gstar0,
+  gstar1,
+  orig.sset = NULL,
+  orig.criterion = NULL,
+  criterion.tol = 1e-04,
+  solver,
+  solver.options,
+  solver.presolve,
+  solver.options.criterion,
+  solver.options.bounds,
+  rescale = TRUE,
+  smallreturnlist = FALSE,
+  noisy = TRUE,
+  debug = FALSE
+)
 }
 \arguments{
 \item{data}{\code{data.frame} or \code{data.table} used to estimate
@@ -82,8 +125,8 @@ open interval (0, 1) drawn from a Halton sequence. The end
 points 0 and 1 are additionally included. These points are used
 to audit whether the shape restrictions on the \code{u}
 components of the MTRs are satisfied. The initial grid used to
-impose the shape constraints in the LP problem are constructed
-from a subset of these points.}
+impose the shape constraints in the LP/QCQP problem are
+constructed from a subset of these points.}
 
 \item{audit.add}{maximum number of points to add to the initial
 constraint grid for imposing each kind of shape constraint. For
@@ -95,14 +138,12 @@ added to the constraint grid.}
 procedure.}
 
 \item{audit.tol}{feasibility tolerance when performing the
-audit. By default to set to be equal to the Gurobi
-(\code{lpsolver = "gurobi"}) and CPLEX (\code{lpsolver =
-"cplexapi"}) feasibility tolerance, which is set to
-\code{1e-06} by default.  If the LP solver is lp_solve
-(\code{lpsolver = "lpsolveapi"}), this parameter is set to
-\code{1e-06} by default. This parameter should only be changed
-if the feasibility tolerance of the LP solver is changed, or if
-numerical issues result in discrepancies between the LP
+audit. By default to set to be 1e-06, which is equal to the
+default feasibility tolerances of Gurobi (\code{solver =
+"gurobi"}), CPLEX (\code{solver = "cplexapi"}), and Rmosek
+(\code{solver = "rmosek"}). This parameter should only be
+changed if the feasibility tolerance of the solver is changed,
+or if numerical issues result in discrepancies between the
 solver's feasibility check and the audit.}
 
 \item{audit.grid}{list, contains the \code{A} matrix used in the
@@ -171,6 +212,19 @@ to \code{TRUE} if the MTE should be weakly monotone decreasing.}
 \item{mte.inc}{logical, set to \code{FALSE} by default. Set equal
 to \code{TRUE} if the MTE should be weakly monotone increasing.}
 
+\item{equal.coef0}{character, a vector containing all the terms in
+\code{m0} that should have the same coefficients in
+\code{m1}. The order of the variables must match those of
+\code{equal.coef1}, which contains all the corresponding terms
+in \code{m1}. The reason the terms are entered separately for
+\code{m0} and \code{m1} is because the spline terms may be
+named differently across treatment and control groups.}
+
+\item{equal.coef1}{character, a vector containing all the terms in
+\code{m1} that should have the same coefficients in
+\code{m0}. See the description for \code{equal.coef0} for more
+details.}
+
 \item{sset}{a list containing the point estimates and gamma moments
 for each IV-like specification.}
 
@@ -188,86 +242,87 @@ IV-like coefficients.}
 corresponds to the minimum observational equivalence criterion
 from the original sample.}
 
-\item{criterion.tol}{tolerance for violation of observational
-equivalence, set to 0 by default. Statistical noise may
-prohibit the theoretical LP problem from being feasible. That
-is, there may not exist a set of coefficients on the MTR that
-are observationally equivalent with regard to the IV-like
-regression coefficients. The function therefore first estimates
-the minimum violation of observational equivalence. This is
-reported in the output under the name 'minimum criterion'. The
-constraints in the LP problem pertaining to observational
-equivalence are then relaxed by the amount \code{minimum
+\item{criterion.tol}{tolerance for the criterion function, and is
+set to 1e-4 by default. The criterion measures how well the
+IV-like moments/conditional means are matched using the
+l1-norm. Statistical noise may prohibit the theoretical LP/QCQP
+problem from being feasible. That is, there may not exist a set
+of MTR coefficients that are able to match all the specified
+moments. The function thus first estimates the minimum
+criterion, which is reported in the output under the name
+'minimum criterion', with a criterion of 0 meaning that all
+moments were able to be matched. The function then relaxes the
+constraints by tolerating a criterion up to \code{minimum
 criterion * (1 + criterion.tol)}. Set \code{criterion.tol} to a
 value greater than 0 to allow for more conservative bounds.}
 
-\item{lpsolver}{character, name of the linear programming package
-in R used to obtain the bounds on the treatment effect. The
-function supports \code{'gurobi'}, \code{'cplexapi'},
+\item{solver}{character, name of the programming package in R used
+to obtain the bounds on the treatment effect. The function
+supports \code{'gurobi'}, \code{'cplexapi'}, \code{rmosek},
 \code{'lpsolveapi'}. The name of the solver should be provided
 with quotation marks.}
 
-\item{lpsolver.options}{list, each item of the list should
-correspond to an option specific to the LP solver selected.}
+\item{solver.options}{list, each item of the list should correspond
+to an option specific to the solver selected.}
 
-\item{lpsolver.presolve}{boolean, default set to \code{TRUE}. Set
+\item{solver.presolve}{boolean, default set to \code{TRUE}. Set
 this parameter to \code{FALSE} if presolve should be turned off
-for the LP problems.}
+for the LP/QCQP problems.}
 
-\item{lpsolver.options.criterion}{list, each item of the list
-should correspond to an option specific to the LP solver
-selected. These options are specific for finding the minimum
-criterion.}
+\item{solver.options.criterion}{list, each item of the list should
+correspond to an option specific to the solver selected. These
+options are specific for finding the minimum criterion.}
 
-\item{lpsolver.options.bounds}{list, each item of the list should
-correspond to an option specific to the LP solver
-selected. These options are specific for finding the bounds.}
+\item{solver.options.bounds}{list, each item of the list should
+correspond to an option specific to the solver selected. These
+options are specific for finding the bounds.}
+
+\item{rescale}{boolean, set to \code{TRUE} if the MTR components
+should be rescaled to improve stability in the LP/QCQP
+optimization.}
 
 \item{smallreturnlist}{boolean, default set to \code{FALSE}. Set to
 \code{TRUE} to exclude large intermediary components
-(i.e. propensity score model, LP model, bootstrap iterations)
-from being included in the return list.}
+(i.e. propensity score model, LP/QCQP model, bootstrap
+iterations) from being included in the return list.}
 
 \item{noisy}{boolean, default set to \code{TRUE}. If \code{TRUE},
 then messages are provided throughout the estimation
 procedure. Set to \code{FALSE} to suppress all messages,
 e.g. when performing the bootstrap.}
 
-\item{seed}{integer, the seed that determines the random grid in
-the audit procedure.}
-
 \item{debug}{boolean, indicates whether or not the function should
 provide output when obtaining bounds. The option is only
-applied when \code{lpsolver = 'gurobi'}. The output provided is
-the same as what the Gurobi API would send to the console.}
+applied when \code{solver = 'gurobi'} or \code{solver =
+'rmosek'}. The output provided is the same as what the Gurobi
+API would send to the console.}
 }
 \value{
 a list. Included in the list are estimates of the treatment
     effect bounds; the minimum violation of observational
     equivalence of the set of IV-like estimands; the list of
-    matrices and vectors defining the LP problem; the points used
+    matrices and vectors defining the LP/QCQP problem; the points used
     to generate the audit grid, and the points where the shape
     constraints were violated.
 }
 \description{
 This is the wrapper for running the entire audit procedure. This
-function sets up the LP problem of minimizing the violation of
-observational equivalence for the set of IV-like estimands, while
-satisfying boundedness and monotonicity constraints declared by the
-user. Rather than enforce that boundedness and monotonicity hold
-across the entire support of covariates and unobservables, this
-procedure enforces the conditions over a grid of points. This grid
-corresponds to the set of values the covariates can take, and a set
-of values of the unobservable term. The size of this grid is
-specified by the user in the function arguments. The procedure
-first estimates the bounds while imposing the shape constraints for
-an initial subset of points in the grid. The procedure then goes on
-to check ('audit') whether the constraints are satisfied over the
-entire grid. Any point where either the boundedness or monotonicity
-constraints are violated are incorporated into the initial grid,
-and the process is repeated until the audit no longer finds any
-violations, or until some maximum number of iterations is
-reached.
+function sets up the LP/QCQP problem of minimizing criterion.  for
+the set of IV-like estimands, while satisfying boundedness and
+monotonicity constraints declared by the user. Rather than enforce
+that boundedness and monotonicity hold across the entire support of
+covariates and unobservables, this procedure enforces the
+conditions over a grid of points. This grid corresponds to the set
+of values the covariates can take, and a set of values of the
+unobservable term. The size of this grid is specified by the user
+in the function arguments. The procedure first estimates the bounds
+while imposing the shape constraints for an initial subset of
+points in the grid. The procedure then goes on to check ('audit')
+whether the constraints are satisfied over the entire grid. Any
+point where either the boundedness or monotonicity constraints are
+violated are incorporated into the initial grid, and the process is
+repeated until the audit no longer finds any violations, or until
+some maximum number of iterations is reached.
 }
 \examples{
 dtm <- ivmte:::gendistMosquito()
@@ -325,8 +380,7 @@ targetGamma <- genTarget(treat = "d",
                          splinesobj = splinesList,
                          pmodobj = propensityObj,
                          pm0 = polynomials0,
-                         pm1 = polynomials1,
-                         point = FALSE)
+                         pm1 = polynomials1)
 
 ## Construct S-set, which contains the coefficients and weights
 ## corresponding to various IV-like estimands
@@ -363,6 +417,6 @@ audit(data = dtm,
       m0.lb = 0.2,
       m1.ub = 0.8,
       audit.max = 5,
-      lpsolver = "lpSolveAPI")
+      solver = "lpSolveAPI")
 
 }

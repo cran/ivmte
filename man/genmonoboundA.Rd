@@ -4,11 +4,39 @@
 \alias{genmonoboundA}
 \title{Generating monotonicity and boundedness constraints}
 \usage{
-genmonoboundA(pm0, pm1, support, grid_index, uvec, splinesobj, monov,
-  uname, m0, m1, sset, gstar0, gstar1, m0.lb, m0.ub, m1.lb, m1.ub, mte.lb,
-  mte.ub, m0.dec, m0.inc, m1.dec, m1.inc, mte.dec, mte.inc,
-  solution.m0.min = NULL, solution.m1.min = NULL,
-  solution.m0.max = NULL, solution.m1.max = NULL, audit.tol)
+genmonoboundA(
+  pm0,
+  pm1,
+  support,
+  grid_index,
+  uvec,
+  splinesobj,
+  monov,
+  uname,
+  m0,
+  m1,
+  sset,
+  gstar0,
+  gstar1,
+  m0.lb,
+  m0.ub,
+  m1.lb,
+  m1.ub,
+  mte.lb,
+  mte.ub,
+  m0.dec,
+  m0.inc,
+  m1.dec,
+  m1.inc,
+  mte.dec,
+  mte.inc,
+  solution.m0.min = NULL,
+  solution.m1.min = NULL,
+  solution.m0.max = NULL,
+  solution.m1.max = NULL,
+  audit.tol,
+  direct
+)
 }
 \arguments{
 \item{pm0}{A list of the monomials in the MTR for d = 0.}
@@ -109,23 +137,26 @@ parameter. If passed, this will initiate checks of shape
 constraints.}
 
 \item{audit.tol}{feasibility tolerance when performing the
-audit. By default to set to be equal to the Gurobi
-(\code{lpsolver = "gurobi"}) and CPLEX (\code{lpsolver =
-"cplexapi"}) feasibility toleraence, which is set to
-\code{1e-06} by default.  If the LP solver is lp_solve
-(\code{lpsolver = "lpsolveapi"}), this parameter is set to
-\code{1e-06} by default. This parameter should only be changed
-if the feasibility tolerance of the LP solver is changed, or if
-numerical issues result in discrepancies between the LP
-solver's feasibility check and the audit.}
+audit. By default to set to be equal \code{1e-06}. This
+parameter should only be changed if the feasibility tolerance
+of the solver is changed, or if numerical issues result in
+discrepancies between the solver's feasibility check and the
+audit.}
+
+\item{direct}{boolean, set to \code{TRUE} if the direct MTR
+regression is used.}
 }
 \value{
 a list containing a unified constraint matrix, unified
     vector of inequalities, and unified RHS vector for the
-    boundedness and monotonicity constraints of an LP problem.
+    boundedness and monotonicity constraints of an LP/QCQP problem.
 }
 \description{
 This is a wrapper function generating the matrices and vectors
 associated with the monotonicity and boundedness constraints
-declared by the user.
+declared by the user. Since this function generates all the
+components required for the shape constraints, it is also the
+function that performs the audit. That is, MTR coefficients are
+passed, then this function will verify whether they satisfy the
+shape constraints.
 }
